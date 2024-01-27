@@ -2,6 +2,7 @@
 # TODO: docstrings everywhere
 # TODO: specify dimensions of tensors when type hinting.
 # TODO: change the name 'regressor' to 'feature'.
+# TODO: type hinting
 
 # Standard library:
 import dataclasses as dc
@@ -9,6 +10,9 @@ import dataclasses as dc
 # External modules:
 import numpy as np
 import nptyping as npt
+from sklearn.utils import check_array
+from sklearn.mixture._base import _check_shape
+# from sklearn.mixture._gaussian_mixture import
 
 @dc.dataclass
 class GaussianParameters:
@@ -64,6 +68,36 @@ class LinearModel:
 
         # Check that the number of features match:
         assert self.linear_parameters.slope_tensor.shape[1] == self.n_features
+
+# TODO: DELETE
+# def _check_weights(
+#     weight_vec,
+#     n_components,
+# ):
+
+#     # TODO: give credit to original authors.
+
+#     weight_vec = check_array(weight_vec, dtype=[np.float64, np.float32], ensure_2d=False)
+#     _check_shape(weight_vec, (n_components,), 'weights')
+
+#     # Check range:
+#     weight_min = np.min(weight_vec)
+#     weight_max = np.max(weight_vec)
+#     if weight_min < 0.0 or weight_max > 1.0:
+#         raise ValueError(
+#             f'The parameter 'weights' should be in the range '
+#             '[0, 1], but got max value {weight_max}, min value {weight_min}.'
+#         )
+
+#     # Check normalization:
+#     weight_sum = np.sum(weight_vec)
+#     if weight_sum != 1.0:
+#         raise ValueError(
+#             'The parameter "weights" should be normalized, but got "sum(weights) = {weight_sum}".'
+#         )
+
+#     return weight_vec
+
 
 def estimate_gaussian_parameters(
     X_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],

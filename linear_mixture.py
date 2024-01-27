@@ -4,21 +4,50 @@ import numpy as np
 import nptyping as npt
 import scipy.special as special
 import sklearn.cluster as cluster
+import sklearn.mixture as mixture
+import sklearn.utils.validation as validation
 
 import utils.utils as utils
 
 
-class LinearMixture:
+class LinearMixture(mixture._base.BaseMixture):
 
     def __init__(
         self,
         n_components=1,
+        *,
+        covariance_type="full",
         tol=1e-3,
+        reg_covar=1e-6,
         max_iter=100,
         n_init=1,
+        init_params="kmeans",
+        weights_init=None,
+        means_init=None,
+        precisions_init=None,
+        random_state=None,
+        warm_start=False,
+        verbose=0,
+        verbose_interval=10,
     ):
 
-        self.n_components = n_components
+        super().__init__(
+            n_components=n_components,
+            tol=tol,
+            reg_covar=reg_covar,
+            max_iter=max_iter,
+            n_init=n_init,
+            init_params=init_params,
+            random_state=random_state,
+            warm_start=warm_start,
+            verbose=verbose,
+            verbose_interval=verbose_interval,
+        )
+
+        self.covariance_type = covariance_type
+        self.weights_init = weights_init
+        self.means_init = means_init
+        self.precisions_init = precisions_init
 
         self.weights_ = None
         self.biases_ = None
@@ -27,11 +56,8 @@ class LinearMixture:
         self.noise_ = None
         self.covariances_ = None
 
-        self.n_init = n_init
         self.n_iter_ = None
         self.lower_bound_ = None
-        self.tol = tol
-        self.max_iter = max_iter
         self.converged_ = False
 
     @property
@@ -47,7 +73,7 @@ class LinearMixture:
         return self.slopes_.shape(1)
 
 
-    def _initialize_parameters(
+    def _initialize(
         self,
         X_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
         Y_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
@@ -192,6 +218,29 @@ class LinearMixture:
         self.noise_ = linear_model.linear_parameters.covariance_tensor
         self.covariances_ = linear_model.gaussian_parameters.covariance_tensor
 
+    def _check_parameters(self, X):
+        """Check the Gaussian mixture parameters are well defined."""
+        # TODO: update this to check the mean and covariance of X and the noise of Y:
+        _, n_features = X.shape
+
+        if self.weights_init is not None:
+            self.weights_init = mixture._gaussian_mixture._check_weights(
+                self.weights_init, self.n_components
+            )
+
+        if self.means_init is not None:
+            self.means_init = mixture._gaussian_mixture._check_means(
+                self.means_init, self.n_components, n_features
+            )
+
+        if self.precisions_init is not None:
+            self.precisions_init = mixture._gaussian_mixture._check_precisions(
+                self.precisions_init,
+                self.covariance_type,
+                self.n_components,
+                n_features,
+            )
+
     def fit(self, X, Y):
         self.fit_predict(X, Y)
         return self
@@ -201,15 +250,14 @@ class LinearMixture:
     # Most of what we have will be based off scikit-learn. Acknowlede their code.
     def fit_predict(self, X, Y):
 
-        # TODO: bring back
-        # X = self._validate_data(X, dtype=[np.float64, np.float32], ensure_min_samples=2)
-        # if X.shape[0] < self.n_components:
-        #     raise ValueError(
-        #         "Expected n_samples >= n_components "
-        #         f"but got n_components = {self.n_components}, "
-        #         f"n_samples = {X.shape[0]}"
-        #     )
-        # self._check_parameters(X)
+        X = self._validate_data(X, dtype=[np.float64, np.float32], ensure_min_samples=2)
+        if X.shape[0] < self.n_components:
+            raise ValueError(
+                "Expected n_samples >= n_components "
+                f"but got n_components = {self.n_components}, "
+                f"n_samples = {X.shape[0]}"
+            )
+        self._check_parameters(X)
 
         # # if we enable warm_start, we will have a unique initialisation
         # do_init = not (self.warm_start and hasattr(self, "converged_"))
@@ -218,8 +266,7 @@ class LinearMixture:
         max_lower_bound = -np.inf
         self.converged_ = False
 
-        # TODO: bring back...
-        # random_state = check_random_state(self.random_state)
+        random_state = validation.check_random_state(self.random_state)
 
         # SF:
         n_init = self.n_init
@@ -232,7 +279,7 @@ class LinearMixture:
             # self._print_verbose_msg_init_beg(init)
 
             if do_init:
-                self._initialize_parameters(X, Y, random_state)
+                self._initialize(X, Y, random_state)
 
             lower_bound = -np.inf if do_init else self.lower_bound_
 
