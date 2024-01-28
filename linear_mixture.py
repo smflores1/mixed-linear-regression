@@ -1,11 +1,14 @@
 
 
+import warnings
+
 import numpy as np
 import nptyping as npt
 import scipy.special as special
 import sklearn.cluster as cluster
 import sklearn.mixture as mixture
 import sklearn.utils.validation as validation
+import sklearn.exceptions as exceptions
 
 import utils.utils as utils
 
@@ -58,7 +61,6 @@ class LinearMixture(mixture._base.BaseMixture):
 
         self.n_iter_ = None
         self.lower_bound_ = None
-        self.converged_ = False
 
     @property
     def n_features(self) -> int:
@@ -77,7 +79,7 @@ class LinearMixture(mixture._base.BaseMixture):
         self,
         X_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
         Y_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
-        random_state: int,
+        random_state: np.random.RandomState,
     ) -> None:
 
         n_samples = X_mat.shape[0]
@@ -141,6 +143,10 @@ class LinearMixture(mixture._base.BaseMixture):
 
     def _estimate_log_weights(self) -> npt.NDArray[npt.Shape['*'], npt.Float]:
         return np.log(self.weights_)
+
+    # TODO: clean up the function signature:
+    def _compute_lower_bound(self, _, log_prob_norm):
+        return log_prob_norm
 
     def _estimate_weighted_log_prob(
         self,
@@ -253,30 +259,23 @@ class LinearMixture(mixture._base.BaseMixture):
         X = self._validate_data(X, dtype=[np.float64, np.float32], ensure_min_samples=2)
         if X.shape[0] < self.n_components:
             raise ValueError(
-                "Expected n_samples >= n_components "
-                f"but got n_components = {self.n_components}, "
-                f"n_samples = {X.shape[0]}"
+                'Expected n_samples >= n_components '
+                f'but got n_components = {self.n_components}, '
+                f'n_samples = {X.shape[0]}'
             )
         self._check_parameters(X)
 
-        # # if we enable warm_start, we will have a unique initialisation
-        # do_init = not (self.warm_start and hasattr(self, "converged_"))
-        # n_init = self.n_init if do_init else 1
+        # If we enable warm_start, we will have a unique initialization:
+        do_init = not (self.warm_start and hasattr(self, "converged_"))
+        n_init = self.n_init if do_init else 1
 
         max_lower_bound = -np.inf
         self.converged_ = False
 
         random_state = validation.check_random_state(self.random_state)
 
-        # SF:
-        n_init = self.n_init
-        random_state = 1
-        do_init = True
-
-        n_samples, _ = X.shape # TODO: from the original code, but not used there...
         for init in range(n_init):
-            # TODO: bring back...
-            # self._print_verbose_msg_init_beg(init)
+            self._print_verbose_msg_init_beg(init)
 
             if do_init:
                 self._initialize(X, Y, random_state)
@@ -292,37 +291,33 @@ class LinearMixture(mixture._base.BaseMixture):
 
                     log_prob_norm, log_resp = self._e_step(X, Y)
                     self._m_step(X, Y, log_resp)
-                    # TODO: this function is trivial for the Gaussian mixture model...
-                    # lower_bound = self._compute_lower_bound(log_resp, log_prob_norm)
-                    lower_bound = log_prob_norm
+                    lower_bound = self._compute_lower_bound(log_resp, log_prob_norm)
 
                     change = lower_bound - prev_lower_bound
-                    # TODO: bring back
-                    # self._print_verbose_msg_iter_end(n_iter, change)
+                    self._print_verbose_msg_iter_end(n_iter, change)
 
                     if abs(change) < self.tol:
                         self.converged_ = True
                         break
 
-                # TODO: bring back...
-                # self._print_verbose_msg_init_end(lower_bound)
+                self._print_verbose_msg_init_end(lower_bound)
 
                 if lower_bound > max_lower_bound or max_lower_bound == -np.inf:
                     max_lower_bound = lower_bound
                     best_params = self._get_parameters()
                     best_n_iter = n_iter
 
-        # # Should only warn about convergence if max_iter > 0, otherwise
-        # # the user is assumed to have used 0-iters initialization
-        # # to get the initial means.
-        # if not self.converged_ and self.max_iter > 0:
-        #     warnings.warn(
-        #         "Initialization %d did not converge. "
-        #         "Try different init parameters, "
-        #         "or increase max_iter, tol "
-        #         "or check for degenerate data." % (init + 1),
-        #         ConvergenceWarning,
-        #     )
+        # Should only warn about convergence if max_iter > 0, otherwise
+        # the user is assumed to have used 0-iters initialization
+        # to get the initial means.
+        if not self.converged_ and self.max_iter > 0:
+            warnings.warn(
+                "Initialization %d did not converge. "
+                "Try different init parameters, "
+                "or increase max_iter, tol "
+                "or check for degenerate data." % (init + 1),
+                exceptions.ConvergenceWarning,
+            )
 
         self._set_parameters(best_params)
         self.n_iter_ = best_n_iter
@@ -368,7 +363,7 @@ if __name__ == '__main__':
 
     test_data = TestData()
 
-    linear_mixture = LinearMixture(n_components=2)
+    linear_mixture = LinearMixture(n_components=2, random_state=np.random.RandomState(1))
     linear_mixture.fit_predict(test_data.X_mat, test_data.Y_mat)
     print('weights:', linear_mixture.weights_)
     print('biases:', linear_mixture.biases_)
