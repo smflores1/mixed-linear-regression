@@ -31,6 +31,7 @@ def _check_n_samples(
 
 class LinearMixture(base.BaseMixture):
 
+    # TODO: type hinting throughout...
     def __init__(
         self,
         n_components=1,
@@ -78,6 +79,8 @@ class LinearMixture(base.BaseMixture):
         self.n_iter_ = None
         self.lower_bound_ = None
 
+        self._resp_init_mat = None
+
     @property
     def n_features(self) -> int:
         if self.slopes_ is None:
@@ -90,107 +93,69 @@ class LinearMixture(base.BaseMixture):
             return None
         return self.slopes_.shape(1)
 
+    def _check_parameters(self, X):
+        """Check the Gaussian mixture parameters are well defined."""
+        # TODO: update this to check the mean and covariance of X and the noise of Y:
 
-    def _initialize(
+        # TODO: write a method to check that the number of samples between X, Y, and the responsibility matrix matches...
+
+        # TODO: write a method to check that the responsibility matrix has self.n_components columns.
+
+        _, n_features = X.shape
+
+        if self.weights_init is not None:
+            self.weights_init = gaussian_mixture._check_weights(
+                self.weights_init, self.n_components
+            )
+
+        if self.means_init is not None:
+            self.means_init = gaussian_mixture._check_means(
+                self.means_init, self.n_components, n_features
+            )
+
+        if self.precisions_init is not None:
+            self.precisions_init = gaussian_mixture._check_precisions(
+                self.precisions_init,
+                self.covariance_type,
+                self.n_components,
+                n_features,
+            )
+
+    def _initialize_parameters(
         self,
         X_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
         Y_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
         random_state: np.random.RandomState,
     ) -> None:
 
-        n_samples = X_mat.shape[0]
-
-
-        _check_n_samples(X_mat, Y_mat, 'regressors', 'responses')
-
-        resp_mat = np.zeros((n_samples, self.n_components))
-        label = (
-            cluster.KMeans(
-                n_clusters=self.n_components, n_init=1, random_state=random_state
-            )
-            .fit(np.concatenate([X_mat, Y_mat], axis=1))
-            .labels_
+        # Set's private attribute `self._resp_init_mat`:
+        super()._initialize_parameters(
+            np.concatenate([X_mat, Y_mat], axis=1),
+            random_state,
         )
-        resp_mat[np.arange(n_samples), label] = 1
 
-        linear_model = utils.fit_linear_model(X_mat, Y_mat, resp_mat)
 
-        self.weights_ = np.mean(resp_mat, axis=0)
+        # TODO: check the types and dimensions before setting these?
+        # Should we make getters and setters out of these to enforce this?
+        # It's probably easier to call a single method that checks everything
+        # whenever these parameters are set.
+
+        linear_model = utils.fit_linear_model(X_mat, Y_mat, self._resp_init_mat)
+
+        self.weights_ = np.mean(self._resp_init_mat, axis=0)
         self.biases_ = linear_model.linear_parameters.bias_mat
         self.means_ = linear_model.gaussian_parameters.mean_mat
         self.slopes_ = linear_model.linear_parameters.slope_tensor
         self.noise_ = linear_model.linear_parameters.covariance_tensor
         self.covariances_ = linear_model.gaussian_parameters.covariance_tensor
 
-    def _estimate_log_prob(
+    # TODO: document that this is a weird thing to do and why...
+    def _initialize(
         self,
         X_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
-        Y_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
-    ) -> npt.NDArray[npt.Shape['*, *'], npt.Float]:
-
-        _check_n_samples(X_mat, Y_mat, 'regressors', 'responses')
-
-        # Output probability density matrix:
-        log_prob_xy_mat = np.empty((X_mat.shape[0], self.n_components))
-
-        for component_index in range(self.n_components):
-
-            # Log-probability of regressors given the component index:
-            log_prob_x = utils.compute_log_prob_gaussian(
-                X_mat,
-                self.means_[component_index],
-                self.covariances_[component_index],
-            )
-
-            # Log-probability of responses given regressors and the component index:
-            log_prob_y = utils.compute_log_prob_gaussian(
-                Y_mat - np.dot(X_mat, self.slopes_[component_index]) - self.biases_[component_index],
-                np.zeros(Y_mat.shape[1]),
-                self.noise_[component_index],
-            )
-
-            # Log-probability of regressors and responses given the component index:
-            log_prob_xy_mat[:, component_index] = log_prob_y + log_prob_x
-
-        return log_prob_xy_mat
-
-    def _estimate_log_weights(self) -> npt.NDArray[npt.Shape['*'], npt.Float]:
-        return np.log(self.weights_)
-
-    # TODO: clean up the function signature:
-    def _compute_lower_bound(self, _, log_prob_norm):
-        return log_prob_norm
-
-    def _estimate_weighted_log_prob(
-        self,
-        X_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
-        Y_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
-    ) -> npt.NDArray[npt.Shape['*, *'], npt.Float]:
-        return self._estimate_log_prob(X_mat, Y_mat) + self._estimate_log_weights()
-
-    # TODO: somehow, the dimensionality of the data is encoded in the dimensions of the parameters.
-    # But I thought that LinearMixture was supposed to be agnostic about the data?
-    def _estimate_log_prob_resp(
-        self,
-        X_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
-        Y_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
-    ) -> tuple[npt.NDArray[npt.Shape['*'], npt.Float], npt.NDArray[npt.Shape['*, *'], npt.Float]]:
-
-        _check_n_samples(X_mat, Y_mat, 'regressors', 'responses')
-
-        # TODO: other data consistency checks, as implied by the shape of the bias and slope vectors/matrices?
-
-        # Responsibity matrix (`self.n_samples` x `self.n_components`):
-        weighted_log_prob_xy_mat = self._estimate_weighted_log_prob(X_mat, Y_mat)
-
-        # Sum responsibilities over components:
-        sum_comp_log_prob_xy_vec = special.logsumexp(weighted_log_prob_xy_mat, axis=1)
-
-        with np.errstate(under='ignore'):
-            # Ignore underflow:
-            log_resp_mat = weighted_log_prob_xy_mat - sum_comp_log_prob_xy_vec[:, np.newaxis]
-
-        return sum_comp_log_prob_xy_vec, log_resp_mat
+        resp_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
+    ) -> None:
+        self._resp_init_mat = resp_mat
 
     def _e_step(
         self,
@@ -225,34 +190,101 @@ class LinearMixture(base.BaseMixture):
         self.noise_ = linear_model.linear_parameters.covariance_tensor
         self.covariances_ = linear_model.gaussian_parameters.covariance_tensor
 
+    def _estimate_log_prob(
+        self,
+        X_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
+        Y_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
+    ) -> npt.NDArray[npt.Shape['*, *'], npt.Float]:
 
-    def _check_parameters(self, X):
-        """Check the Gaussian mixture parameters are well defined."""
-        # TODO: update this to check the mean and covariance of X and the noise of Y:
+        _check_n_samples(X_mat, Y_mat, 'regressors', 'responses')
 
-        # TODO: write a method to check that the number of samples between X, Y, and the responsibility matrix matches...
+        # TODO: check that X_mat has the right shape relative to the mean and covariances...
+        # TODO: check that Y_mat has the right shape...
 
-        # TODO: write a method to check that the responsibility matrix has self.n_components columns.
+        # Output probability density matrix:
+        log_prob_xy_mat = np.empty((X_mat.shape[0], self.n_components))
 
-        _, n_features = X.shape
+        for component_index in range(self.n_components):
 
-        if self.weights_init is not None:
-            self.weights_init = gaussian_mixture._check_weights(
-                self.weights_init, self.n_components
+            # Log-probability of regressors given the component index:
+            log_prob_x = utils.compute_log_prob_gaussian(
+                X_mat,
+                self.means_[component_index],
+                self.covariances_[component_index],
             )
 
-        if self.means_init is not None:
-            self.means_init = gaussian_mixture._check_means(
-                self.means_init, self.n_components, n_features
+            # Log-probability of responses given regressors and the component index:
+            log_prob_y = utils.compute_log_prob_gaussian(
+                Y_mat - np.dot(X_mat, self.slopes_[component_index]) - self.biases_[component_index],
+                np.zeros(Y_mat.shape[1]),
+                self.noise_[component_index],
             )
 
-        if self.precisions_init is not None:
-            self.precisions_init = gaussian_mixture._check_precisions(
-                self.precisions_init,
-                self.covariance_type,
-                self.n_components,
-                n_features,
-            )
+            # Log-probability of regressors and responses given the component index:
+            log_prob_xy_mat[:, component_index] = log_prob_y + log_prob_x
+
+        return log_prob_xy_mat
+
+    def _estimate_log_weights(self) -> npt.NDArray[npt.Shape['*'], npt.Float]:
+        return np.log(self.weights_)
+
+    def _estimate_weighted_log_prob(
+        self,
+        X_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
+        Y_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
+    ) -> npt.NDArray[npt.Shape['*, *'], npt.Float]:
+        return self._estimate_log_prob(X_mat, Y_mat) + self._estimate_log_weights()
+
+    # TODO: somehow, the dimensionality of the data is encoded in the dimensions of the parameters.
+    # But I thought that LinearMixture was supposed to be agnostic about the data?
+    def _estimate_log_prob_resp(
+        self,
+        X_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
+        Y_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
+    ) -> tuple[npt.NDArray[npt.Shape['*'], npt.Float], npt.NDArray[npt.Shape['*, *'], npt.Float]]:
+
+        _check_n_samples(X_mat, Y_mat, 'regressors', 'responses')
+
+        # TODO: other data consistency checks, as implied by the shape of the bias and slope vectors/matrices?
+
+        # Responsibity matrix (`self.n_samples` x `self.n_components`):
+        weighted_log_prob_xy_mat = self._estimate_weighted_log_prob(X_mat, Y_mat)
+
+        # Sum responsibilities over components:
+        sum_comp_log_prob_xy_vec = special.logsumexp(weighted_log_prob_xy_mat, axis=1)
+
+        with np.errstate(under='ignore'):
+            # Ignore underflow:
+            log_resp_mat = weighted_log_prob_xy_mat - sum_comp_log_prob_xy_vec[:, np.newaxis]
+
+        return sum_comp_log_prob_xy_vec, log_resp_mat
+
+    # TODO: clean up the function signature:
+    def _compute_lower_bound(self, _, log_prob_norm):
+        return log_prob_norm
+
+
+    def _get_parameters(self):
+        return (
+            self.weights_,
+            self.biases_,
+            self.means_,
+            self.slopes_,
+            self.noise_,
+            self.covariances_,
+        )
+
+    def _set_parameters(self, params):
+        (
+            self.weights_,
+            self.biases_,
+            self.means_,
+            self.slopes_,
+            self.noise_,
+            self.covariances_,
+        ) = params
+
+
 
     def fit(self, X, Y):
         self.fit_predict(X, Y)
@@ -285,7 +317,7 @@ class LinearMixture(base.BaseMixture):
             self._print_verbose_msg_init_beg(init)
 
             if do_init:
-                self._initialize(X, Y, random_state)
+                self._initialize_parameters(X, Y, random_state)
 
             lower_bound = -np.inf if do_init else self.lower_bound_
 
@@ -342,25 +374,6 @@ class LinearMixture(base.BaseMixture):
     ):
         return self._estimate_weighted_log_prob(X_mat, Y_mat).argmax(axis=1)
 
-    def _get_parameters(self):
-        return (
-            self.weights_,
-            self.biases_,
-            self.means_,
-            self.slopes_,
-            self.noise_,
-            self.covariances_,
-        )
-
-    def _set_parameters(self, params):
-        (
-            self.weights_,
-            self.biases_,
-            self.means_,
-            self.slopes_,
-            self.noise_,
-            self.covariances_,
-        ) = params
 
 if __name__ == '__main__':
 

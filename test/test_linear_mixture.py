@@ -26,7 +26,7 @@ def linear_mixture():
         max_iter=100,
     )
 
-def test__initialize(test_data, linear_mixture):
+def test__initialize_parameters(test_data, linear_mixture):
 
     # Clusters are sufficiently far apart that k-means distinguishes them completely.
 
@@ -35,7 +35,7 @@ def test__initialize(test_data, linear_mixture):
     linear_model = utils.fit_linear_model(test_data.X_mat, test_data.Y_mat, test_data.resp_mat)
 
     # A first attempt to find clusters using k-means and fit a linear model to each:
-    linear_mixture._initialize(test_data.X_mat, test_data.Y_mat, random_state)
+    linear_mixture._initialize_parameters(test_data.X_mat, test_data.Y_mat, random_state)
 
     # Check that Gaussian model for regressors agree:
     assert np.allclose(linear_mixture.means_, linear_model.gaussian_parameters.mean_mat)
@@ -64,7 +64,7 @@ def test__estimate_log_prob(test_data, linear_mixture):
 
     # A first attempt to find clusters using k-means and fit a linear model to each:
     # TODO: is there a way to not have to explicitly call this each time?
-    linear_mixture._initialize(X_mat, Y_mat, random_state)
+    linear_mixture._initialize_parameters(X_mat, Y_mat, random_state)
 
     prob_xy_given_component_mat = linear_mixture._estimate_log_prob(
         X_mat, Y_mat,
@@ -108,7 +108,7 @@ def test__estimate_log_prob_resp(test_data, linear_mixture):
     random_state = 1
 
     # A first attempt to find clusters using k-means and fit a linear model to each:
-    linear_mixture._initialize(test_data.X_mat, test_data.Y_mat, random_state)
+    linear_mixture._initialize_parameters(test_data.X_mat, test_data.Y_mat, random_state)
 
     # Responsibity matrix (`self.n_samples` x `self.n_components`):
     sum_comp_log_prob_xy_vec, log_resp_mat = linear_mixture._estimate_log_prob_resp(
