@@ -5,29 +5,13 @@ import typing
 import numpy as np
 import nptyping as npt
 import scipy.special as special
-import sklearn.cluster as cluster
 import sklearn.mixture._base as base
-import sklearn.mixture._gaussian_mixture as gaussian_mixture
 import sklearn.utils.validation as validation
 import sklearn.exceptions as sklexc
 
 import utils.utils as utils
 
 
-def _check_n_samples(
-    X_mat: npt.NDArray[typing.Any, npt.Float],
-    Y_mat: npt.NDArray[typing.Any, npt.Float],
-    name_x: str,
-    name_y: str,
-):
-
-    len_x = len(X_mat)
-    len_y = len(Y_mat)
-    if len_x != len_y:
-        raise ValueError(
-            f'The {name_x} and {name_y} matrices should have the same number '
-            f'of samples (i.e. rows) but have {len_x} and {len_y} respectively.'
-        )
 
 class LinearMixture(base.BaseMixture):
 
@@ -104,17 +88,17 @@ class LinearMixture(base.BaseMixture):
         _, n_features = X.shape
 
         if self.weights_init is not None:
-            self.weights_init = gaussian_mixture._check_weights(
+            self.weights_init = utils.check_weights(
                 self.weights_init, self.n_components
             )
 
         if self.means_init is not None:
-            self.means_init = gaussian_mixture._check_means(
+            self.means_init = utils.check_means(
                 self.means_init, self.n_components, n_features
             )
 
         if self.precisions_init is not None:
-            self.precisions_init = gaussian_mixture._check_precisions(
+            self.precisions_init = utils.check_precisions(
                 self.precisions_init,
                 self.covariance_type,
                 self.n_components,
@@ -163,7 +147,7 @@ class LinearMixture(base.BaseMixture):
         Y_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
     ) -> tuple[float, npt.NDArray[npt.Shape['*, *'], npt.Float]]:
 
-        _check_n_samples(X_mat, Y_mat, 'regressors', 'responses')
+        utils.check_n_samples(X_mat, Y_mat, 'regressors', 'responses')
 
         sum_comp_log_prob_xy_vec, log_resp_mat = self._estimate_log_prob_resp(X_mat, Y_mat)
 
@@ -176,10 +160,10 @@ class LinearMixture(base.BaseMixture):
         log_resp_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
     ) -> None:
 
-        _check_n_samples(X_mat, Y_mat, 'regressors', 'responses')
-        _check_n_samples(X_mat, log_resp_mat, 'regressors', 'responsibilities')
+        utils.check_n_samples(X_mat, Y_mat, 'regressors', 'responses')
+        utils.check_n_samples(X_mat, log_resp_mat, 'regressors', 'responsibilities')
 
-        gaussian_mixture._check_shape(log_resp_mat, (X_mat.shape[0], self.n_components), 'responsabilities')
+        utils.check_shape(log_resp_mat, (X_mat.shape[0], self.n_components), 'responsabilities')
 
         linear_model = utils.fit_linear_model(X_mat, Y_mat, np.exp(log_resp_mat))
 
@@ -196,7 +180,7 @@ class LinearMixture(base.BaseMixture):
         Y_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
     ) -> npt.NDArray[npt.Shape['*, *'], npt.Float]:
 
-        _check_n_samples(X_mat, Y_mat, 'regressors', 'responses')
+        utils.check_n_samples(X_mat, Y_mat, 'regressors', 'responses')
 
         # TODO: check that X_mat has the right shape relative to the mean and covariances...
         # TODO: check that Y_mat has the right shape...
@@ -243,7 +227,7 @@ class LinearMixture(base.BaseMixture):
         Y_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
     ) -> tuple[npt.NDArray[npt.Shape['*'], npt.Float], npt.NDArray[npt.Shape['*, *'], npt.Float]]:
 
-        _check_n_samples(X_mat, Y_mat, 'regressors', 'responses')
+        utils.check_n_samples(X_mat, Y_mat, 'regressors', 'responses')
 
         # TODO: other data consistency checks, as implied by the shape of the bias and slope vectors/matrices?
 

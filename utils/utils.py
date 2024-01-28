@@ -5,13 +5,15 @@
 # TODO: type hinting
 
 # Standard library:
+import typing
 import dataclasses as dc
 
 # External modules:
 import numpy as np
 import nptyping as npt
 from sklearn.utils import check_array
-from sklearn.mixture._base import _check_shape
+import sklearn.mixture._base as base
+import sklearn.mixture._gaussian_mixture as gaussian_mixture
 # from sklearn.mixture._gaussian_mixture import
 
 @dc.dataclass
@@ -69,34 +71,33 @@ class LinearModel:
         # Check that the number of features match:
         assert self.linear_parameters.slope_tensor.shape[1] == self.n_features
 
-# TODO: DELETE
-# def _check_weights(
-#     weight_vec,
-#     n_components,
-# ):
 
-#     # TODO: give credit to original authors.
+def check_n_samples(
+    X_mat: npt.NDArray[typing.Any, npt.Float],
+    Y_mat: npt.NDArray[typing.Any, npt.Float],
+    name_x: str,
+    name_y: str,
+):
 
-#     weight_vec = check_array(weight_vec, dtype=[np.float64, np.float32], ensure_2d=False)
-#     _check_shape(weight_vec, (n_components,), 'weights')
+    len_x = len(X_mat)
+    len_y = len(Y_mat)
+    if len_x != len_y:
+        raise ValueError(
+            f'The {name_x} and {name_y} matrices should have the same number '
+            f'of samples (i.e. rows) but have {len_x} and {len_y} respectively.'
+        )
 
-#     # Check range:
-#     weight_min = np.min(weight_vec)
-#     weight_max = np.max(weight_vec)
-#     if weight_min < 0.0 or weight_max > 1.0:
-#         raise ValueError(
-#             f'The parameter 'weights' should be in the range '
-#             '[0, 1], but got max value {weight_max}, min value {weight_min}.'
-#         )
+def check_weights(*args):
+    return gaussian_mixture._check_weights(*args)
 
-#     # Check normalization:
-#     weight_sum = np.sum(weight_vec)
-#     if weight_sum != 1.0:
-#         raise ValueError(
-#             'The parameter "weights" should be normalized, but got "sum(weights) = {weight_sum}".'
-#         )
+def check_means(*args):
+    return gaussian_mixture._check_means(*args)
 
-#     return weight_vec
+def check_precisions(*args):
+    return gaussian_mixture._check_precisions(*args)
+
+def check_shape(*args):
+    return base._check_shape(*args)
 
 
 def estimate_gaussian_parameters(
