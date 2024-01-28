@@ -1,19 +1,35 @@
 
 
 import warnings
-
+import typing
 import numpy as np
 import nptyping as npt
 import scipy.special as special
 import sklearn.cluster as cluster
-import sklearn.mixture as mixture
+import sklearn.mixture._base as base
+import sklearn.mixture._gaussian_mixture as gaussian_mixture
 import sklearn.utils.validation as validation
-import sklearn.exceptions as exceptions
+import sklearn.exceptions as sklexc
 
 import utils.utils as utils
 
 
-class LinearMixture(mixture._base.BaseMixture):
+def _check_n_samples(
+    X_mat: npt.NDArray[typing.Any, npt.Float],
+    Y_mat: npt.NDArray[typing.Any, npt.Float],
+    name_x: str,
+    name_y: str,
+):
+
+    len_x = len(X_mat)
+    len_y = len(Y_mat)
+    if len_x != len_y:
+        raise ValueError(
+            f'The {name_x} and {name_y} matrices should have the same number '
+            f'of samples (i.e. rows) but have {len_x} and {len_y} respectively.'
+        )
+
+class LinearMixture(base.BaseMixture):
 
     def __init__(
         self,
@@ -84,7 +100,8 @@ class LinearMixture(mixture._base.BaseMixture):
 
         n_samples = X_mat.shape[0]
 
-        assert Y_mat.shape[0] == n_samples
+
+        _check_n_samples(X_mat, Y_mat, 'regressors', 'responses')
 
         resp_mat = np.zeros((n_samples, self.n_components))
         label = (
@@ -111,14 +128,10 @@ class LinearMixture(mixture._base.BaseMixture):
         Y_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
     ) -> npt.NDArray[npt.Shape['*, *'], npt.Float]:
 
-        n_samples = X_mat.shape[0]
-        n_responses = Y_mat.shape[1]
-
-        # Check that the response and regressor have the same number of samples:
-        assert Y_mat.shape[0] == n_samples
+        _check_n_samples(X_mat, Y_mat, 'regressors', 'responses')
 
         # Output probability density matrix:
-        log_prob_xy_mat = np.empty((n_samples, self.n_components))
+        log_prob_xy_mat = np.empty((X_mat.shape[0], self.n_components))
 
         for component_index in range(self.n_components):
 
@@ -132,7 +145,7 @@ class LinearMixture(mixture._base.BaseMixture):
             # Log-probability of responses given regressors and the component index:
             log_prob_y = utils.compute_log_prob_gaussian(
                 Y_mat - np.dot(X_mat, self.slopes_[component_index]) - self.biases_[component_index],
-                np.zeros(n_responses),
+                np.zeros(Y_mat.shape[1]),
                 self.noise_[component_index],
             )
 
@@ -163,8 +176,7 @@ class LinearMixture(mixture._base.BaseMixture):
         Y_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
     ) -> tuple[npt.NDArray[npt.Shape['*'], npt.Float], npt.NDArray[npt.Shape['*, *'], npt.Float]]:
 
-        # Check that the response and regressor have the same number of samples:
-        assert Y_mat.shape[0] == X_mat.shape[0]
+        _check_n_samples(X_mat, Y_mat, 'regressors', 'responses')
 
         # TODO: other data consistency checks, as implied by the shape of the bias and slope vectors/matrices?
 
@@ -178,9 +190,6 @@ class LinearMixture(mixture._base.BaseMixture):
             # Ignore underflow:
             log_resp_mat = weighted_log_prob_xy_mat - sum_comp_log_prob_xy_vec[:, np.newaxis]
 
-        # TODO: why return the first argument? What we really want is `weighted_log_prob_xy_mat`
-        # averaged over the component index with weights equal to the responsibilities. But why
-        # do that here? It would only be done here to match the interface for scikit-learn.
         return sum_comp_log_prob_xy_vec, log_resp_mat
 
     def _e_step(
@@ -189,12 +198,10 @@ class LinearMixture(mixture._base.BaseMixture):
         Y_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
     ) -> tuple[float, npt.NDArray[npt.Shape['*, *'], npt.Float]]:
 
-        # Check that the response and regressor have the same number of samples:
-        assert Y_mat.shape[0] == X_mat.shape[0]
+        _check_n_samples(X_mat, Y_mat, 'regressors', 'responses')
 
         sum_comp_log_prob_xy_vec, log_resp_mat = self._estimate_log_prob_resp(X_mat, Y_mat)
-        # TODO: the mean here seems to be a proxy for the true loss function that we are
-        # maximizing. Why do that?
+
         return np.mean(sum_comp_log_prob_xy_vec), log_resp_mat
 
     def _m_step(
@@ -204,18 +211,12 @@ class LinearMixture(mixture._base.BaseMixture):
         log_resp_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
     ) -> None:
 
-        n_samples = X_mat.shape[0]
+        _check_n_samples(X_mat, Y_mat, 'regressors', 'responses')
+        _check_n_samples(X_mat, log_resp_mat, 'regressors', 'responsibilities')
 
-        # Check that the response and regressor have the same number of samples:
-        assert Y_mat.shape[0] == X_mat.shape[0]
+        gaussian_mixture._check_shape(log_resp_mat, (X_mat.shape[0], self.n_components), 'responsabilities')
 
-        # Check the shape of the matrix of responsibilities:
-        assert log_resp_mat.shape == (n_samples, self.n_components)
-
-        # Responsibilities:
-        resp_mat = np.exp(log_resp_mat)
-
-        linear_model = utils.fit_linear_model(X_mat, Y_mat, resp_mat)
+        linear_model = utils.fit_linear_model(X_mat, Y_mat, np.exp(log_resp_mat))
 
         self.weights_ = linear_model.weight_vec
         self.biases_ = linear_model.linear_parameters.bias_mat
@@ -224,23 +225,29 @@ class LinearMixture(mixture._base.BaseMixture):
         self.noise_ = linear_model.linear_parameters.covariance_tensor
         self.covariances_ = linear_model.gaussian_parameters.covariance_tensor
 
+
     def _check_parameters(self, X):
         """Check the Gaussian mixture parameters are well defined."""
         # TODO: update this to check the mean and covariance of X and the noise of Y:
+
+        # TODO: write a method to check that the number of samples between X, Y, and the responsibility matrix matches...
+
+        # TODO: write a method to check that the responsibility matrix has self.n_components columns.
+
         _, n_features = X.shape
 
         if self.weights_init is not None:
-            self.weights_init = mixture._gaussian_mixture._check_weights(
+            self.weights_init = gaussian_mixture._check_weights(
                 self.weights_init, self.n_components
             )
 
         if self.means_init is not None:
-            self.means_init = mixture._gaussian_mixture._check_means(
+            self.means_init = gaussian_mixture._check_means(
                 self.means_init, self.n_components, n_features
             )
 
         if self.precisions_init is not None:
-            self.precisions_init = mixture._gaussian_mixture._check_precisions(
+            self.precisions_init = gaussian_mixture._check_precisions(
                 self.precisions_init,
                 self.covariance_type,
                 self.n_components,
@@ -312,11 +319,9 @@ class LinearMixture(mixture._base.BaseMixture):
         # to get the initial means.
         if not self.converged_ and self.max_iter > 0:
             warnings.warn(
-                "Initialization %d did not converge. "
-                "Try different init parameters, "
-                "or increase max_iter, tol "
-                "or check for degenerate data." % (init + 1),
-                exceptions.ConvergenceWarning,
+                f'Initialization {init + 1} did not converge. Try different init, '
+                'parameters or increase `max_iter`, `tol` or check for degenerate data.',
+                sklexc.ConvergenceWarning,
             )
 
         self._set_parameters(best_params)
@@ -324,8 +329,8 @@ class LinearMixture(mixture._base.BaseMixture):
         self.lower_bound_ = max_lower_bound
 
         # Always do a final e-step to guarantee that the labels returned by
-        # fit_predict(X) are always consistent with fit(X).predict(X)
-        # for any value of max_iter and tol (and any random_state).
+        # `fit_predict(X)` are always consistent with fit(X).predict(X)
+        # for any value of `max_iter` and `tol` (and any `random_state`):
         _, log_resp = self._e_step(X, Y)
 
         return log_resp.argmax(axis=1)
