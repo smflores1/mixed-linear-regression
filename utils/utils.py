@@ -88,11 +88,47 @@ def check_n_samples(
             f'of samples (i.e. rows) but have {len_x} and {len_y} respectively.'
         )
 
+
+def check_shape(*args):
+    return base._check_shape(*args)
+
 def check_weights(*args):
     return gaussian_mixture._check_weights(*args)
 
 def check_means(*args):
     return gaussian_mixture._check_means(*args)
+
+def check_biases(
+    bias_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
+    n_components: int,
+    n_responses: int,
+) -> npt.NDArray[npt.Shape['*, *'], npt.Float]:
+
+    bias_mat = check_array(
+        bias_mat,
+        dtype=[np.float64, np.float32],
+        ensure_2d=True,
+    )
+    check_shape(bias_mat, (n_components, n_responses), 'biases')
+
+    return bias_mat
+
+def check_slopes(
+    slope_tensor: npt.NDArray[npt.Shape['*, *, *'], npt.Float],
+    n_components: int,
+    n_features: int,
+    n_responses: int,
+) -> npt.NDArray[npt.Shape['*, *, *'], npt.Float]:
+
+    slope_tensor = check_array(
+        slope_tensor,
+        dtype=[np.float64, np.float32, np.float32],
+        ensure_2d=False,
+        allow_nd=True,
+    )
+    check_shape(slope_tensor, (n_components, n_features, n_responses), 'slopes')
+
+    return slope_tensor
 
 def check_precisions(*args):
     return gaussian_mixture._check_precisions(*args)
@@ -100,20 +136,20 @@ def check_precisions(*args):
 def check_precisions_cholesky(
     precisions_cholesky_tensor: npt.NDArray[npt.Shape['*, *, * '], npt.Float],
     n_components: int,
-    n_features: int,
+    size: int,
 ):
 
     # Check the shape:
-    base._check_shape(
+    check_shape(
         precisions_cholesky_tensor,
-        (n_components, n_features, n_features),
+        (n_components, size, size),
         'Cholesky matrix of precision',
     )
 
     # Check that each Cholesky matrix ...:
     for component_index, cholesky_mat in enumerate(precisions_cholesky_tensor):
         # ...is lower triangular:
-        if not np.allclose(cholesky_mat, np.tril(cholesky_mat)):
+        if not np.allclose(cholesky_mat, np.triu(cholesky_mat)):
             raise ValueError(
                 f'In component {component_index}, the Cholesky matrix of the '
                 'precision matrix must be lower triangular, but it is not.'
@@ -124,11 +160,6 @@ def check_precisions_cholesky(
                 f'In component {component_index}, the Cholesky matrix of the '
                 'precision matrix can have only positive diagonal entries, but does not.'
             )
-
-
-
-def check_shape(*args):
-    return base._check_shape(*args)
 
 def compute_precision_cholesky(*args):
     return gaussian_mixture._compute_precision_cholesky(*args)

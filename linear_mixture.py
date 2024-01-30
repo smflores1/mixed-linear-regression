@@ -113,7 +113,7 @@ class LinearMixture(base.BaseMixture):
             response_precisions_tensor[component_index] = np.dot(cholesky_mat, cholesky_mat.T)
         return response_precisions_tensor
 
-    def _check_parameters(self, X):
+    def _check_parameters(self, X, Y):
         """Check the Gaussian mixture parameters are well defined."""
         # TODO: update this to check the mean and covariance of X and the noise of Y:
 
@@ -122,6 +122,7 @@ class LinearMixture(base.BaseMixture):
         # TODO: write a method to check that the responsibility matrix has self.n_components columns.
 
         _, n_features = X.shape
+        _, n_responses = Y.shape
 
         if self.weights_init is not None:
             self.weights_init = utils.check_weights(
@@ -135,6 +136,15 @@ class LinearMixture(base.BaseMixture):
 
         # TODO: Check biases?
         # TODO: Check slopes?
+
+        if self.biases_init is not None:
+            self.biases_init = utils.check_biases(
+                self.biases_init, self.n_components, n_responses
+            )
+        if self.slopes_init is not None:
+            self.slopes_init = utils.check_slopes(
+                self.slopes_init, self.n_components, n_features, n_responses
+            )
 
         # TODO: do we check self.regressor_covaraince and self.response_covariance?
 
@@ -176,6 +186,8 @@ class LinearMixture(base.BaseMixture):
         # Comment that we have to do this code here because _initialize as it is used
         # in super()._initialize_parameters does not let us split X_mat and Y_mat.
         linear_model = utils.fit_linear_model(X_mat, Y_mat, self._resp_init_mat)
+
+        # TODO: can we use _set_parameters for this?
 
         if self.weights_init is None:
             self.weights_ = np.mean(self._resp_init_mat, axis=0)
@@ -386,12 +398,14 @@ class LinearMixture(base.BaseMixture):
         else:
             n_features = self.n_features
 
+        if self.n_responses is None:
+            n_responses = self.biases_.shape[1]
+        else:
+            n_responses = self.n_responses
+
         weights_ = utils.check_weights(weights_, self.n_components)
 
         means_ = utils.check_means(means_, self.n_components, n_features)
-
-        # TODO: Check biases?
-        # TODO: Check slopes?
 
         regressor_precisions_cholesky_ = utils.check_precisions_cholesky(
             regressor_precisions_cholesky_,
@@ -399,10 +413,13 @@ class LinearMixture(base.BaseMixture):
             n_features,
         )
 
+        biases_ = utils.check_biases(biases_, self.n_components, n_responses)
+        slopes_ = utils.check_slopes(slopes_, self.n_components, n_features, n_responses)
+
         response_precisions_cholesky_ = utils.check_precisions_cholesky(
             response_precisions_cholesky_,
             self.n_components,
-            n_features,
+            n_responses,
         )
 
         self.weights_ = weights_
@@ -434,7 +451,8 @@ class LinearMixture(base.BaseMixture):
                 f'but got n_components = {self.n_components}, '
                 f'n_samples = {X.shape[0]}'
             )
-        self._check_parameters(X)
+        # TODO: validate data in Y too...
+        self._check_parameters(X, Y)
 
         # If we enable warm_start, we will have a unique initialization:
         do_init = not (self.warm_start and hasattr(self, "converged_"))
