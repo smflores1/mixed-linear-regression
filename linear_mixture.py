@@ -20,7 +20,6 @@ class LinearMixture(base.BaseMixture):
         self,
         n_components=1,
         *,
-        covariance_type="full",
         tol=1e-3,
         reg_covar=1e-6,
         max_iter=100,
@@ -28,7 +27,10 @@ class LinearMixture(base.BaseMixture):
         init_params="kmeans",
         weights_init=None,
         means_init=None,
-        precisions_init=None,
+        regressor_precisions_init=None,
+        biases_init=None,
+        slopes_init=None,
+        response_precisions_init=None,
         random_state=None,
         warm_start=False,
         verbose=0,
@@ -48,17 +50,33 @@ class LinearMixture(base.BaseMixture):
             verbose_interval=verbose_interval,
         )
 
-        self.covariance_type = covariance_type
+        # For each component, we estimate a separate covariance matrix
+        # for both the regressor variables and the response variables:
+        self.covariance_type = 'full'
+
+        # Maybe run _check_parameters with no data X to see if these inputs are ok...
+
         self.weights_init = weights_init
+
         self.means_init = means_init
-        self.precisions_init = precisions_init
+        self.regressor_precisions_init = regressor_precisions_init
+
+        self.biases_init = biases_init
+        self.slopes_init = slopes_init
+        self.response_precisions_init = response_precisions_init
 
         self.weights_ = None
-        self.biases_ = None
+
         self.means_ = None
+        # TODO: make into a property:
+        self.regressor_covariance_ = None
+        self.regressor_precisions_ = None
+        self.regressor_precisions_cholesky_ = None
+
+        self.biases_ = None
         self.slopes_ = None
-        self.noise_ = None
-        self.covariances_ = None
+        self.response_covariance_ = None
+        self.response_precisions_cholesky_ = None
 
         self.n_iter_ = None
         self.lower_bound_ = None
@@ -67,15 +85,33 @@ class LinearMixture(base.BaseMixture):
 
     @property
     def n_features(self) -> int:
-        if self.slopes_ is None:
+        if self.slopes_init is None:
             return None
-        return self.slopes_.shape(0)
+        return self.slopes_init.shape[0]
 
     @property
     def n_responses(self) -> int:
-        if self.slopes_ is None:
+        if self.slopes_init is None:
             return None
-        return self.slopes_.shape(1)
+        return self.slopes_init.shape[1]
+
+    @property
+    def regressor_precisions(self) -> typing.Optional[npt.NDArray[npt.Shape['*, *, *'], npt.Float]]:
+        if self.regressor_precisions_cholesky_ is None:
+            return None
+        regressor_precisions_tensor = np.empty(self.regressor_precisions_cholesky_.shape)
+        for component_index, cholesky_mat in enumerate(self.regressor_precisions_cholesky_):
+            regressor_precisions_tensor[component_index] = np.dot(cholesky_mat, cholesky_mat.T)
+        return regressor_precisions_tensor
+
+    @property
+    def response_precisions(self) -> typing.Optional[npt.NDArray[npt.Shape['*, *, *'], npt.Float]]:
+        if self.response_precisions_cholesky_ is None:
+            return None
+        response_precisions_tensor = np.empty(self.response_precisions_cholesky_.shape)
+        for component_index, cholesky_mat in enumerate(self.response_precisions_cholesky_):
+            response_precisions_tensor[component_index] = np.dot(cholesky_mat, cholesky_mat.T)
+        return response_precisions_tensor
 
     def _check_parameters(self, X):
         """Check the Gaussian mixture parameters are well defined."""
@@ -97,9 +133,22 @@ class LinearMixture(base.BaseMixture):
                 self.means_init, self.n_components, n_features
             )
 
-        if self.precisions_init is not None:
-            self.precisions_init = utils.check_precisions(
-                self.precisions_init,
+        # TODO: Check biases?
+        # TODO: Check slopes?
+
+        # TODO: do we check self.regressor_covaraince and self.response_covariance?
+
+        if self.regressor_precisions_init is not None:
+            self.regressor_precisions_init = utils.check_precisions(
+                self.regressor_precisions_init,
+                self.covariance_type,
+                self.n_components,
+                n_features,
+            )
+
+        if self.response_precisions_init is not None:
+            self.response_precisions_init = utils.check_precisions(
+                self.response_precisions_init,
                 self.covariance_type,
                 self.n_components,
                 n_features,
@@ -124,14 +173,62 @@ class LinearMixture(base.BaseMixture):
         # It's probably easier to call a single method that checks everything
         # whenever these parameters are set.
 
+        # Comment that we have to do this code here because _initialize as it is used
+        # in super()._initialize_parameters does not let us split X_mat and Y_mat.
         linear_model = utils.fit_linear_model(X_mat, Y_mat, self._resp_init_mat)
 
-        self.weights_ = np.mean(self._resp_init_mat, axis=0)
-        self.biases_ = linear_model.linear_parameters.bias_mat
-        self.means_ = linear_model.gaussian_parameters.mean_mat
-        self.slopes_ = linear_model.linear_parameters.slope_tensor
-        self.noise_ = linear_model.linear_parameters.covariance_tensor
-        self.covariances_ = linear_model.gaussian_parameters.covariance_tensor
+        if self.weights_init is None:
+            self.weights_ = np.mean(self._resp_init_mat, axis=0)
+        else:
+            self.weights_ = self.weights_init
+
+        if self.means_init is None:
+            self.means_ = linear_model.gaussian_parameters.mean_mat
+        else:
+            self.means_ = self.means_init
+
+        if self.biases_init is None:
+            self.biases_ = linear_model.linear_parameters.bias_mat
+        else:
+            self.biases_ = self.biases_init
+
+        if self.slopes_init is None:
+            self.slopes_ = linear_model.linear_parameters.slope_tensor
+        else:
+            self.slopes_ = self.slopes_init
+
+        if self.regressor_precisions_init is None:
+            self.regressor_covariance_ = linear_model.gaussian_parameters.covariance_tensor
+            self.regressor_precisions_cholesky_ = utils.compute_precision_cholesky(
+                self.regressor_covariance_, self.covariance_type
+            )
+        else:
+            self.regressor_precisions_cholesky_ = utils.compute_precision_cholesky_from_precisions(
+                self.regressor_precisions_init, self.covariance_type
+            )
+
+        if self.regressor_precisions_init is None:
+            self.regressor_covariance_ = linear_model.gaussian_parameters.covariance_tensor
+            self.regressor_precisions_cholesky_ = utils.compute_precision_cholesky(
+                self.regressor_covariance_, self.covariance_type
+            )
+        else:
+            self.regressor_precisions_cholesky_ = utils.compute_precision_cholesky_from_precisions(
+                self.regressor_precisions_init, self.covariance_type
+            )
+
+        if self.response_precisions_init is None:
+            self.response_covariance_ = linear_model.linear_parameters.covariance_tensor
+            self.response_precisions_cholesky_ = utils.compute_precision_cholesky(
+                self.response_covariance_, self.covariance_type
+            )
+        else:
+            self.response_precisions_cholesky_ = utils.compute_precision_cholesky_from_precisions(
+                self.response_precisions_init, self.covariance_type
+            )
+
+        self.response_covariance_ = linear_model.linear_parameters.covariance_tensor
+        self.regressor_covariance_ = linear_model.gaussian_parameters.covariance_tensor
 
     # TODO: document that this is a weird thing to do and why...
     def _initialize(
@@ -163,16 +260,23 @@ class LinearMixture(base.BaseMixture):
         utils.check_n_samples(X_mat, Y_mat, 'regressors', 'responses')
         utils.check_n_samples(X_mat, log_resp_mat, 'regressors', 'responsibilities')
 
-        utils.check_shape(log_resp_mat, (X_mat.shape[0], self.n_components), 'responsabilities')
+        utils.check_shape(log_resp_mat, (X_mat.shape[0], self.n_components), 'responsibilities')
 
         linear_model = utils.fit_linear_model(X_mat, Y_mat, np.exp(log_resp_mat))
 
+        # TODO: why not do this through _set_parameters()?
         self.weights_ = linear_model.weight_vec
         self.biases_ = linear_model.linear_parameters.bias_mat
         self.means_ = linear_model.gaussian_parameters.mean_mat
         self.slopes_ = linear_model.linear_parameters.slope_tensor
-        self.noise_ = linear_model.linear_parameters.covariance_tensor
-        self.covariances_ = linear_model.gaussian_parameters.covariance_tensor
+        self.regressor_covariance_ = linear_model.gaussian_parameters.covariance_tensor
+        self.response_covariance_ = linear_model.linear_parameters.covariance_tensor
+        self.regressor_precisions_cholesky_ = utils.compute_precision_cholesky(
+            self.regressor_covariance_, self.covariance_type
+        )
+        self.response_precisions_cholesky_ = utils.compute_precision_cholesky(
+            self.response_covariance_, self.covariance_type
+        )
 
     def _estimate_log_prob(
         self,
@@ -188,24 +292,26 @@ class LinearMixture(base.BaseMixture):
         # Output probability density matrix:
         log_prob_xy_mat = np.empty((X_mat.shape[0], self.n_components))
 
+        # TODO: compute the cholesky decomponsition of the precision matrix...
+
         for component_index in range(self.n_components):
 
             # Log-probability of regressors given the component index:
-            log_prob_x = utils.compute_log_prob_gaussian(
+            log_prob_x_vec = utils.compute_log_gaussian_prob(
                 X_mat,
                 self.means_[component_index],
-                self.covariances_[component_index],
+                self.regressor_covariance_[component_index],
             )
 
             # Log-probability of responses given regressors and the component index:
-            log_prob_y = utils.compute_log_prob_gaussian(
+            log_prob_y_vec = utils.compute_log_gaussian_prob(
                 Y_mat - np.dot(X_mat, self.slopes_[component_index]) - self.biases_[component_index],
                 np.zeros(Y_mat.shape[1]),
-                self.noise_[component_index],
+                self.response_covariance_[component_index],
             )
 
             # Log-probability of regressors and responses given the component index:
-            log_prob_xy_mat[:, component_index] = log_prob_y + log_prob_x
+            log_prob_xy_mat[:, component_index] = log_prob_y_vec + log_prob_x_vec
 
         return log_prob_xy_mat
 
@@ -248,26 +354,65 @@ class LinearMixture(base.BaseMixture):
         return log_prob_norm
 
 
+    # TODO: Have this return a linear model object...
     def _get_parameters(self):
-        return (
+        return(
             self.weights_,
-            self.biases_,
             self.means_,
+            self.regressor_covariance_,
+            self.regressor_precisions_cholesky_,
+            self.biases_,
             self.slopes_,
-            self.noise_,
-            self.covariances_,
+            self.response_covariance_,
+            self.response_precisions_cholesky_,
         )
 
+    # TODO: make this accept a linear model as an argument...
     def _set_parameters(self, params):
+
         (
-            self.weights_,
-            self.biases_,
-            self.means_,
-            self.slopes_,
-            self.noise_,
-            self.covariances_,
+            weights_,
+            means_,
+            regressor_covariance_,
+            regressor_precisions_cholesky_,
+            biases_,
+            slopes_,
+            response_covariance_,
+            response_precisions_cholesky_,
         ) = params
 
+        if self.n_features is None:
+            n_features = self.means_.shape[1]
+        else:
+            n_features = self.n_features
+
+        weights_ = utils.check_weights(weights_, self.n_components)
+
+        means_ = utils.check_means(means_, self.n_components, n_features)
+
+        # TODO: Check biases?
+        # TODO: Check slopes?
+
+        regressor_precisions_cholesky_ = utils.check_precisions_cholesky(
+            regressor_precisions_cholesky_,
+            self.n_components,
+            n_features,
+        )
+
+        response_precisions_cholesky_ = utils.check_precisions_cholesky(
+            response_precisions_cholesky_,
+            self.n_components,
+            n_features,
+        )
+
+        self.weights_ = weights_
+        self.biases_ = biases_
+        self.means_ = means_
+        self.slopes_ = slopes_
+        self.regressor_covariance_ = regressor_covariance_
+        self.response_covariance_ = response_covariance_
+        self.regressor_precisions_cholesky_ = regressor_precisions_cholesky_
+        self.response_precisions_cholesky_ = response_precisions_cholesky_
 
 
     def fit(self, X, Y):
@@ -278,6 +423,9 @@ class LinearMixture(base.BaseMixture):
     # because we need to use Y. Therefore, we can make this whatever we want.
     # Most of what we have will be based off scikit-learn. Acknowlede their code.
     def fit_predict(self, X, Y):
+
+        # TODO: check that X has the right number of features if this is frozen by
+        # usage of init variables. Otherwise don't.
 
         X = self._validate_data(X, dtype=[np.float64, np.float32], ensure_min_samples=2)
         if X.shape[0] < self.n_components:
@@ -371,14 +519,14 @@ if __name__ == '__main__':
     print('biases:', linear_mixture.biases_)
     print('means:', linear_mixture.means_)
     print('slopes:', linear_mixture.slopes_)
-    print('noise:', linear_mixture.noise_)
-    print('covariances:', linear_mixture.covariances_)
+    print('rseponse covariance:', linear_mixture.response_covariance_)
+    print('regressor covariance:', linear_mixture.regressor_covariance_)
 
     assert np.allclose(linear_mixture.weights_, np.array([0.5, 0.5]), rtol=1e-1)
     assert np.allclose(linear_mixture.biases_, np.array([test_data.bias1_vec, test_data.bias2_vec]), rtol=1e-1)
     assert np.allclose(linear_mixture.means_, np.array([test_data.mean1_vec, test_data.mean2_vec]), rtol=1e-1)
     assert np.allclose(linear_mixture.slopes_, np.array([test_data.slope1_mat, test_data.slope2_mat]), rtol=1e-1)
-    assert np.allclose(linear_mixture.noise_, np.array([test_data.res_cov1_mat, test_data.res_cov2_mat]), atol=1e-1)
+    assert np.allclose(linear_mixture.response_covariance_, np.array([test_data.res_cov1_mat, test_data.res_cov2_mat]), atol=1e-1)
     # Don't use relative tolerance because the relative error between the estimated and
     # actual value is 1 for entries of the covariance matrix whose actual value equals 0.0:
-    assert np.allclose(linear_mixture.covariances_, np.array([test_data.reg_cov1_mat, test_data.reg_cov2_mat]), atol=1e-1)
+    assert np.allclose(linear_mixture.regressor_covariance_, np.array([test_data.reg_cov1_mat, test_data.reg_cov2_mat]), atol=1e-1)

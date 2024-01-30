@@ -109,14 +109,15 @@ def test_estimate_linear_parameters(test_data):
     assert np.allclose(linear_parameters.covariance_tensor[1], test_data.res_cov2_mat, atol=1e-1)
 
 
-def test_compute_log_prob_gaussian(test_data):
+def test_compute_log_gaussian_prob(test_data):
 
     for X_mat, mean_vec, covariance_mat in zip(
         [test_data.X1_mat, test_data.X2_mat],
         [test_data.mean1_vec, test_data.mean2_vec],
         [test_data.reg_cov1_mat, test_data.reg_cov2_mat],
     ):
-        log_prob_gaussian_test_vec = utils.compute_log_prob_gaussian(X_mat, mean_vec, covariance_mat)
+        # TODO: do we want to include the 'full' argument? Maybe we don't need this unit test...
+        log_prob_gaussian_test_vec = utils.compute_log_gaussian_prob(X_mat, mean_vec, covariance_mat)
         log_prob_gaussian_true_vec = np.log(
             stats.multivariate_normal(
                 mean=mean_vec,

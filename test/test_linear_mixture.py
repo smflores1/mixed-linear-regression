@@ -39,12 +39,12 @@ def test__initialize_parameters(test_data, linear_mixture):
 
     # Check that Gaussian model for regressors agree:
     assert np.allclose(linear_mixture.means_, linear_model.gaussian_parameters.mean_mat)
-    assert np.allclose(linear_mixture.covariances_, linear_model.gaussian_parameters.covariance_tensor)
+    assert np.allclose(linear_mixture.regressor_covariance_, linear_model.gaussian_parameters.covariance_tensor)
 
     # Check that linear model for responses agree:
     assert np.allclose(linear_mixture.biases_, linear_model.linear_parameters.bias_mat)
     assert np.allclose(linear_mixture.slopes_, linear_model.linear_parameters.slope_tensor)
-    assert np.allclose(linear_mixture.noise_, linear_model.linear_parameters.covariance_tensor)
+    assert np.allclose(linear_mixture.response_covariance_, linear_model.linear_parameters.covariance_tensor)
 
     # Check the weights. With the clusters separated and having the same number
     # of points, the probability of belonging to either cluster should be 0.5:

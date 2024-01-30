@@ -11,6 +11,7 @@ import dataclasses as dc
 # External modules:
 import numpy as np
 import nptyping as npt
+import scipy.linalg as linalg
 from sklearn.utils import check_array
 import sklearn.mixture._base as base
 import sklearn.mixture._gaussian_mixture as gaussian_mixture
@@ -96,8 +97,44 @@ def check_means(*args):
 def check_precisions(*args):
     return gaussian_mixture._check_precisions(*args)
 
+def check_precisions_cholesky(
+    precisions_cholesky_tensor: npt.NDArray[npt.Shape['*, *, * '], npt.Float],
+    n_components: int,
+    n_features: int,
+):
+
+    # Check the shape:
+    base._check_shape(
+        precisions_cholesky_tensor,
+        (n_components, n_features, n_features),
+        'Cholesky matrix of precision',
+    )
+
+    # Check that each Cholesky matrix ...:
+    for component_index, cholesky_mat in enumerate(precisions_cholesky_tensor):
+        # ...is lower triangular:
+        if not np.allclose(cholesky_mat, np.tril(cholesky_mat)):
+            raise ValueError(
+                f'In component {component_index}, the Cholesky matrix of the '
+                'precision matrix must be lower triangular, but it is not.'
+            )
+        # ...has only positive entries on the diagonal:
+        if not np.all(np.diag(cholesky_mat) > 0):
+            raise ValueError(
+                f'In component {component_index}, the Cholesky matrix of the '
+                'precision matrix can have only positive diagonal entries, but does not.'
+            )
+
+
+
 def check_shape(*args):
     return base._check_shape(*args)
+
+def compute_precision_cholesky(*args):
+    return gaussian_mixture._compute_precision_cholesky(*args)
+
+def compute_precision_cholesky_from_precisions(*args):
+    return gaussian_mixture._compute_precision_cholesky_from_precisions(*args)
 
 
 def estimate_gaussian_parameters(
@@ -190,23 +227,22 @@ def fit_linear_model(
         gaussian_parameters=gaussian_parameters,
     )
 
-def compute_log_prob_gaussian(X_mat, mean_vec, covariance_mat):
+# TODO: import the method _compute_precision_cholesky from gaussian_mixture and define it as a function here...
 
-    n_samples = X_mat.shape[0]
+def compute_log_gaussian_prob(X_mat, mean_vec, covariance_mat):
+
     n_features = X_mat.shape[1]
 
-    assert len(mean_vec) == n_features
-    assert covariance_mat.shape == (n_features, n_features)
+    try:
+        cov_chol = linalg.cholesky(covariance_mat, lower=True)
+    except linalg.LinAlgError:
+        raise ValueError()
+    precisions_chol = linalg.solve_triangular(
+        cov_chol, np.eye(len(covariance_mat)), lower=True
+    ).T
+    log_prob_vec = np.dot(X_mat, precisions_chol) - np.dot(mean_vec, precisions_chol)
+    log_prob_vec = np.sum(np.square(log_prob_vec), axis=1)
 
-    diff_mat = X_mat - mean_vec
-    exponent_vec = np.empty(n_samples)
-    for k, diff_vec in enumerate(diff_mat):
-        exponent_vec[k] = -0.5 * np.dot(diff_vec, np.dot(np.linalg.inv(covariance_mat), diff_vec.T))
-    log_prefactor = -0.5 * (n_features * np.log(2 * np.pi) + np.log(np.linalg.det(covariance_mat)))
+    log_det = np.sum(np.log(np.diag(precisions_chol)))
 
-    return log_prefactor + exponent_vec
-
-
-# def estimate_component_weights(
-#     resp_mat: npt.NDArray[npt.Shape['*, *'], npt.Float]
-# ):
+    return -0.5 * (n_features * np.log(2 * np.pi) + log_prob_vec) + log_det
