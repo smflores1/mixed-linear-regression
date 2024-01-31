@@ -54,23 +54,40 @@ class LinearMixture(base.BaseMixture):
         # for both the regressor variables and the response variables:
         self.covariance_type = 'full'
 
-        # Maybe run _check_parameters with no data X to see if these inputs are ok...
+        if regressor_precisions_init is None:
+            regressor_covariances_init = None
+        else:
+            regressor_covariances_init = np.linalg.inv(regressor_precisions_init)
+        gaussian_parameters_init = utils.GaussianParameters(
+            mean_mat=means_init,
+            covariance_tensor=regressor_covariances_init
+        )
 
-        self.weights_init = weights_init
+        if response_precisions_init is None:
+            response_covariances_init = None
+        else:
+            response_covariances_init = np.linalg.inv(response_precisions_init)
+        linear_parameters_init = utils.LinearParameters(
+            bias_mat=biases_init,
+            slope_tensor=slopes_init,
+            covariance_tensor=response_covariances_init,
+        )
+        self._linear_model_init = utils.LinearModel(
+            weight_vec=weights_init,
+            gaussian_parameters=gaussian_parameters_init,
+            linear_parameters=linear_parameters_init,
+        )
 
-        self.means_init = means_init
-        self.regressor_precisions_init = regressor_precisions_init
+        # TODO: replace with an AttributeError
+        assert self._linear_model_init.n_components in [None, self.n_components]
 
-        self.biases_init = biases_init
-        self.slopes_init = slopes_init
-        self.response_precisions_init = response_precisions_init
+        self._n_features = self._n_features_init
+        self._n_responses = self._n_responses_init
 
         self.weights_ = None
 
         self.means_ = None
-        # TODO: make into a property:
         self.regressor_covariance_ = None
-        self.regressor_precisions_ = None
         self.regressor_precisions_cholesky_ = None
 
         self.biases_ = None
@@ -84,16 +101,70 @@ class LinearMixture(base.BaseMixture):
         self._resp_init_mat = None
 
     @property
-    def n_features(self) -> int:
-        if self.slopes_init is None:
-            return None
-        return self.slopes_init.shape[0]
+    def weights_init(self):
+        return self._linear_model_init.weight_vec
 
     @property
-    def n_responses(self) -> int:
-        if self.slopes_init is None:
+    def means_init(self):
+        return self._linear_model_init.gaussian_parameters.mean_mat
+
+    # TODO: this is going to call an inversion operation each time. Is that ok?
+    # TODO: is it better to store the Cholesky factorization?
+    @property
+    def regressor_precisions_init(self):
+        regressor_covariance_mat = self._linear_model_init.gaussian_parameters.covariance_tensor
+        if regressor_covariance_mat is None:
             return None
-        return self.slopes_init.shape[1]
+        return np.linalg.inv(regressor_covariance_mat)
+
+    @property
+    def biases_init(self):
+        return self._linear_model_init.linear_parameters.bias_mat
+
+    @property
+    def slopes_init(self):
+        return self._linear_model_init.linear_parameters.slope_tensor
+
+    # TODO: this is going to call an inversion operation each time. Is that ok?
+    # TODO: is it better to store the Cholesky factorization?
+    @property
+    def response_precisions_init(self):
+        response_covariance_mat = self._linear_model_init.linear_parameters.covariance_tensor
+        if response_covariance_mat is None:
+            return None
+        return np.linalg.inv(response_covariance_mat)
+
+    @property
+    def _n_features_init(self):
+        return self._linear_model_init.n_features
+
+    @property
+    def _n_responses_init(self):
+        return self._linear_model_init.n_responses
+
+    @property
+    def n_features(self):
+        return self._n_features
+
+    @n_features.setter
+    def n_features(self, val):
+        if self._n_features_init is None or self._n_features_init == val:
+            self._n_features = val
+        else:
+            # TODO: fill in...
+            raise AttributeError
+
+    @property
+    def n_responses(self):
+        return self._n_responses
+
+    @n_responses.setter
+    def n_responses(self, val):
+        if self._n_responses_init is None or self._n_responses_init == val:
+            self._n_responses = val
+        else:
+            # TODO: fill in...
+            raise AttributeError
 
     @property
     def regressor_precisions(self) -> typing.Optional[npt.NDArray[npt.Shape['*, *, *'], npt.Float]]:
@@ -113,56 +184,8 @@ class LinearMixture(base.BaseMixture):
             response_precisions_tensor[component_index] = np.dot(cholesky_mat, cholesky_mat.T)
         return response_precisions_tensor
 
-    def _check_parameters(self, X, Y):
-        """Check the Gaussian mixture parameters are well defined."""
-        # TODO: update this to check the mean and covariance of X and the noise of Y:
-
-        # TODO: write a method to check that the number of samples between X, Y, and the responsibility matrix matches...
-
-        # TODO: write a method to check that the responsibility matrix has self.n_components columns.
-
-        _, n_features = X.shape
-        _, n_responses = Y.shape
-
-        if self.weights_init is not None:
-            self.weights_init = utils.check_weights(
-                self.weights_init, self.n_components
-            )
-
-        if self.means_init is not None:
-            self.means_init = utils.check_means(
-                self.means_init, self.n_components, n_features
-            )
-
-        # TODO: Check biases?
-        # TODO: Check slopes?
-
-        if self.biases_init is not None:
-            self.biases_init = utils.check_biases(
-                self.biases_init, self.n_components, n_responses
-            )
-        if self.slopes_init is not None:
-            self.slopes_init = utils.check_slopes(
-                self.slopes_init, self.n_components, n_features, n_responses
-            )
-
-        # TODO: do we check self.regressor_covaraince and self.response_covariance?
-
-        if self.regressor_precisions_init is not None:
-            self.regressor_precisions_init = utils.check_precisions(
-                self.regressor_precisions_init,
-                self.covariance_type,
-                self.n_components,
-                n_features,
-            )
-
-        if self.response_precisions_init is not None:
-            self.response_precisions_init = utils.check_precisions(
-                self.response_precisions_init,
-                self.covariance_type,
-                self.n_components,
-                n_features,
-            )
+    def _check_parameters(self, *args):
+        pass
 
     def _initialize_parameters(
         self,
@@ -171,23 +194,18 @@ class LinearMixture(base.BaseMixture):
         random_state: np.random.RandomState,
     ) -> None:
 
-        # Set's private attribute `self._resp_init_mat`:
+        # Sets private attribute `self._resp_init_mat` via `self._initialize`:
         super()._initialize_parameters(
             np.concatenate([X_mat, Y_mat], axis=1),
             random_state,
         )
 
-
-        # TODO: check the types and dimensions before setting these?
-        # Should we make getters and setters out of these to enforce this?
-        # It's probably easier to call a single method that checks everything
-        # whenever these parameters are set.
-
         # Comment that we have to do this code here because _initialize as it is used
         # in super()._initialize_parameters does not let us split X_mat and Y_mat.
         linear_model = utils.fit_linear_model(X_mat, Y_mat, self._resp_init_mat)
 
-        # TODO: can we use _set_parameters for this?
+        # TODO: can we use _set_parameters for this? This would force us to check the
+        # types and dimensions...
 
         if self.weights_init is None:
             self.weights_ = np.mean(self._resp_init_mat, axis=0)
@@ -218,16 +236,7 @@ class LinearMixture(base.BaseMixture):
             self.regressor_precisions_cholesky_ = utils.compute_precision_cholesky_from_precisions(
                 self.regressor_precisions_init, self.covariance_type
             )
-
-        if self.regressor_precisions_init is None:
-            self.regressor_covariance_ = linear_model.gaussian_parameters.covariance_tensor
-            self.regressor_precisions_cholesky_ = utils.compute_precision_cholesky(
-                self.regressor_covariance_, self.covariance_type
-            )
-        else:
-            self.regressor_precisions_cholesky_ = utils.compute_precision_cholesky_from_precisions(
-                self.regressor_precisions_init, self.covariance_type
-            )
+            # TODO: compute the covariance tensor from self.regressor_precisions_cholesky_
 
         if self.response_precisions_init is None:
             self.response_covariance_ = linear_model.linear_parameters.covariance_tensor
@@ -238,9 +247,7 @@ class LinearMixture(base.BaseMixture):
             self.response_precisions_cholesky_ = utils.compute_precision_cholesky_from_precisions(
                 self.response_precisions_init, self.covariance_type
             )
-
-        self.response_covariance_ = linear_model.linear_parameters.covariance_tensor
-        self.regressor_covariance_ = linear_model.gaussian_parameters.covariance_tensor
+            # TODO: compute the covariance tensor from self.response_precisions_cholesky_
 
     # TODO: document that this is a weird thing to do and why...
     def _initialize(
@@ -393,6 +400,9 @@ class LinearMixture(base.BaseMixture):
             response_precisions_cholesky_,
         ) = params
 
+        # TODO: remove the below after you replace the arg list with a single LinearModel.
+        # Then all of these checks are automatically done for you.
+
         if self.n_features is None:
             n_features = self.means_.shape[1]
         else:
@@ -441,18 +451,23 @@ class LinearMixture(base.BaseMixture):
     # Most of what we have will be based off scikit-learn. Acknowlede their code.
     def fit_predict(self, X, Y):
 
-        # TODO: check that X has the right number of features if this is frozen by
-        # usage of init variables. Otherwise don't.
-
-        X = self._validate_data(X, dtype=[np.float64, np.float32], ensure_min_samples=2)
+        # TODO: explain why we set reset=True...
+        X = self._validate_data(X, dtype=[np.float64, np.float32], ensure_min_samples=2, reset=True)
+        Y = self._validate_data(Y, dtype=[np.float64, np.float32], ensure_min_samples=2, reset=True)
+        # TODO: explain this condition and replace with a ValueError if it doesn't hold
+        assert X.shape[0] == Y.shape[0]
         if X.shape[0] < self.n_components:
             raise ValueError(
                 'Expected n_samples >= n_components '
                 f'but got n_components = {self.n_components}, '
                 f'n_samples = {X.shape[0]}'
             )
-        # TODO: validate data in Y too...
-        self._check_parameters(X, Y)
+
+        self.n_features = X.shape[1]
+        self.n_responses = Y.shape[1]
+
+        # TODO: this doesn't do anything but is required as an abstract method.
+        self._check_parameters()
 
         # If we enable warm_start, we will have a unique initialization:
         do_init = not (self.warm_start and hasattr(self, "converged_"))

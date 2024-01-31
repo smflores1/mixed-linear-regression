@@ -17,6 +17,9 @@ import sklearn.mixture._base as base
 import sklearn.mixture._gaussian_mixture as gaussian_mixture
 # from sklearn.mixture._gaussian_mixture import
 
+# TODO: add 'Optional' to type hinting so these can store partial info (for when we only have some parameters from init)
+# TODO: promote assertions to something like ValueError
+# TODO: is it better to store the Cholesky factorization of the covariance tensor?
 @dc.dataclass
 class GaussianParameters:
     mean_mat: npt.NDArray[npt.Shape['*, *'], npt.Float]
@@ -24,16 +27,34 @@ class GaussianParameters:
 
     def __post_init__(self):
 
-        self.n_components = self.mean_mat.shape[0]
-        self.n_features = self.mean_mat.shape[1]
+        self.n_components = None
+        self.n_features = None
 
-        # Check that the number of components match:
-        assert self.covariance_tensor.shape[0] == self.n_components
+        if self.mean_mat is not None:
+            self.n_components = self.mean_mat.shape[0]
+            self.n_features = self.mean_mat.shape[1]
+            self.mean_mat = check_means(
+                self.mean_mat, self.n_components, self.n_features
+            )
 
-        # Check that the number of features match:
-        assert self.covariance_tensor.shape[1] == self.n_features
-        assert self.covariance_tensor.shape[2] == self.n_features
+        # NOTE: it's misleading to use check_precisions on a covariance matrix,
+        # but it technically works...
+        if self.covariance_tensor is not None:
+            if self.n_components is None:
+                self.n_components = self.covariance_tensor.shape[0]
+            if self.n_features is None:
+                self.n_features = self.covariance_tensor.shape[1]
+            self.covariance_tensor = check_precisions(
+                self.covariance_tensor,
+                'full',
+                self.n_components,
+                self.n_features,
+            )
 
+
+# TODO: add 'Optional' to type hinting so these can store partial info (for when we only have some parameters from init)
+# TODO: promote assertions to something like ValueError
+# TODO: is it better to store the Cholesky factorization of the covariance tensor?
 @dc.dataclass
 class LinearParameters:
     bias_mat: npt.NDArray[npt.Shape['*, *'], npt.Float]
@@ -42,18 +63,43 @@ class LinearParameters:
 
     def __post_init__(self):
 
-        self.n_components = self.bias_mat.shape[0]
-        self.n_responses = self.bias_mat.shape[1]
+        # TODO: make this work if attributes are None
 
-        # Check that the number of components match:
-        assert self.slope_tensor.shape[0] == self.n_components
-        assert self.covariance_tensor.shape[0] == self.n_components
+        self.n_components = None
+        self.n_features = None
+        self.n_responses = None
 
-        # Check that the number of responses match:
-        assert self.slope_tensor.shape[2] == self.n_responses
-        assert self.covariance_tensor.shape[1] == self.n_responses
-        assert self.covariance_tensor.shape[2] == self.n_responses
+        if self.bias_mat is not None:
+            self.n_components = self.bias_mat.shape[0]
+            self.n_responses = self.bias_mat.shape[1]
+            self.bias_mat = check_biases(
+                self.bias_mat, self.n_components, self.n_responses
+            )
 
+        if self.slope_tensor is not None:
+            if self.n_components is None:
+                self.n_components = self.slope_tensor.shape[0]
+            self.n_features = self.slope_tensor.shape[1]
+            self.slope_tensor = check_slopes(
+                self.slope_tensor, self.n_components, self.n_features, self.n_responses
+            )
+
+        # NOTE: it's misleading to use check_precisions on a covariance matrix,
+        # but it technically works...
+        if self.covariance_tensor is not None:
+            if self.n_components is None:
+                self.n_components = self.covariance_tensor.shape[0]
+            if self.n_responses is None:
+                self.n_responses = self.covariance_tensor.shape[1]
+            self.covariance_tensor = check_precisions(
+                self.covariance_tensor,
+                'full',
+                self.n_components,
+                self.n_responses,
+            )
+
+# TODO: add 'Optional' to type hinting so these can store partial info (for when we only have some parameters from init)
+# TODO: promote assertions to something like ValueError
 @dc.dataclass
 class LinearModel:
     weight_vec: npt.NDArray[npt.Shape['*'], npt.Float]
@@ -70,7 +116,7 @@ class LinearModel:
         assert self.linear_parameters.n_components == self.n_components
 
         # Check that the number of features match:
-        assert self.linear_parameters.slope_tensor.shape[1] == self.n_features
+        assert self.linear_parameters.n_features == self.n_features
 
 
 def check_n_samples(
