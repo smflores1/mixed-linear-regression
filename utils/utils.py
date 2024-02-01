@@ -19,7 +19,7 @@ import sklearn.mixture._gaussian_mixture as gaussian_mixture
 
 # TODO: add 'Optional' to type hinting so these can store partial info (for when we only have some parameters from init)
 # TODO: promote assertions to something like ValueError
-# TODO: is it better to store the Cholesky factorization of the covariance tensor?
+# TODO: store the Cholesky factorization of the covariance tensor and make the covariance tensor a property.
 @dc.dataclass
 class GaussianParameters:
     mean_mat: npt.NDArray[npt.Shape['*, *'], npt.Float]
@@ -54,7 +54,7 @@ class GaussianParameters:
 
 # TODO: add 'Optional' to type hinting so these can store partial info (for when we only have some parameters from init)
 # TODO: promote assertions to something like ValueError
-# TODO: is it better to store the Cholesky factorization of the covariance tensor?
+# TODO: store the Cholesky factorization of the covariance tensor and make the covariance tensor a property.
 @dc.dataclass
 class LinearParameters:
     bias_mat: npt.NDArray[npt.Shape['*, *'], npt.Float]

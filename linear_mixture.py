@@ -11,7 +11,12 @@ import sklearn.exceptions as sklexc
 
 import utils.utils as utils
 
+# TODO: in all private methods, do not check anything about the structure of the data.
+# Only do that for public methods. However, document the structure of the data in the docstring
+# for all private methods.
 
+# TODO: check that what I have put in __init__ can be reinitialized if the self.set_params method
+# from the BaseEstimator is called.
 
 class LinearMixture(base.BaseMixture):
 
@@ -454,8 +459,7 @@ class LinearMixture(base.BaseMixture):
         # TODO: explain why we set reset=True...
         X = self._validate_data(X, dtype=[np.float64, np.float32], ensure_min_samples=2, reset=True)
         Y = self._validate_data(Y, dtype=[np.float64, np.float32], ensure_min_samples=2, reset=True)
-        # TODO: explain this condition and replace with a ValueError if it doesn't hold
-        assert X.shape[0] == Y.shape[0]
+        utils.check_n_samples(X, Y, 'regressors', 'responses')
         if X.shape[0] < self.n_components:
             raise ValueError(
                 'Expected n_samples >= n_components '
