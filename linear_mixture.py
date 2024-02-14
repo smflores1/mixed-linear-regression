@@ -15,6 +15,17 @@ import utils.utils as utils
 
 class LinearMixture(base.BaseMixture):
 
+    _parameter_constraints: dict = {
+        **base.BaseMixture._parameter_constraints,
+        'covariance_type': ['full'],
+        'weights_init': ['array-like', None],
+        'means_init': ['array-like', None],
+        'regressor_precisions_init': ['array-like', None],
+        'biases_init': ['array-like', None],
+        'slopes_init': ['array-like', None],
+        'response_precisions_init': ['array-like', None],
+    }
+
     def __init__(
         self,
         n_components: int = 1,
@@ -26,7 +37,7 @@ class LinearMixture(base.BaseMixture):
         init_params: str = 'kmeans',
         weights_init: utils.array_1D = None,
         means_init: utils.array_2D = None,
-        regressor_precisions_init=None,
+        regressor_precisions_init: utils.array_3D = None,
         biases_init: utils.array_2D = None,
         slopes_init: utils.array_3D = None,
         response_precisions_init: utils.array_3D = None,
@@ -52,12 +63,16 @@ class LinearMixture(base.BaseMixture):
         if regressor_precisions_init is None:
             regressor_covariances_init = None
         else:
-            regressor_covariances_init = np.linalg.inv(regressor_precisions_init)
+            regressor_covariances_init = np.empty(regressor_precisions_init.shape)
+            for k, regressor_precision_mat in enumerate(regressor_precisions_init):
+                regressor_covariances_init[k] = np.linalg.inv(regressor_precision_mat)
 
         if response_precisions_init is None:
             response_covariances_init = None
         else:
-            response_covariances_init = np.linalg.inv(response_precisions_init)
+            response_covariances_init = np.empty(response_precisions_init.shape)
+            for k, response_precision_mat in enumerate(response_precisions_init):
+                response_covariances_init[k] = np.linalg.inv(response_precision_mat)
 
         # Fit parameter initial values:
         self._linear_model_init = utils.LinearModel(
@@ -97,6 +112,30 @@ class LinearMixture(base.BaseMixture):
         self.lower_bound_ = None
 
         self._resp_init_mat = None
+
+    @property
+    def weights_init(self) -> utils.array_1D:
+        return self._linear_model_init.weight_vec
+
+    @property
+    def means_init(self) -> utils.array_2D:
+        return self._linear_model_init.gaussian_parameters.mean_mat
+
+    @property
+    def regressor_precisions_init(self) -> utils.array_3D:
+        return self._linear_model_init.gaussian_parameters.precision_tensor
+
+    @property
+    def biases_init(self) -> utils.array_2D:
+        return self._linear_model_init.linear_parameters.bias_mat
+
+    @property
+    def slopes_init(self) -> utils.array_3D:
+        return self._linear_model_init.linear_parameters.slope_tensor
+
+    @property
+    def response_precisions_init(self) -> utils.array_3D:
+        return self._linear_model_init.linear_parameters.precision_tensor
 
     @property
     def weights_(self) -> utils.array_1D:
@@ -404,7 +443,7 @@ class LinearMixture(base.BaseMixture):
     ) -> None:
         self._linear_model = linear_model
 
-    # @base._fit_context(prefer_skip_nested_validation=True)
+    @base._fit_context(prefer_skip_nested_validation=True)
     def fit(
         self,
         X_mat: utils.array_2D,

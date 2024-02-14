@@ -28,7 +28,13 @@ class CovarianceTensor:
         self,
         covariance_tensor: array_3D,
     ):
-        self._covariance_tensor = covariance_tensor
+
+        self._covariance_tensor = None
+        self._precision_cholesky_tensor = None
+        self._precision_tensor = None
+
+        # This calls the setter:
+        self.covariance_tensor = covariance_tensor
 
     @property
     def covariance_tensor(self) -> npt.NDArray[npt.Shape['*, *, *'], npt.Float]:
@@ -42,15 +48,33 @@ class CovarianceTensor:
         self._covariance_tensor = tensor
         if tensor is None:
             self._precision_cholesky_tensor = None
+            self._precision_tensor = None
         else:
             self._precision_cholesky_tensor = compute_precision_cholesky(tensor, 'full')
+            self._precision_tensor = np.dot(
+                self._precision_cholesky_tensor,
+                self._precision_cholesky_tensor.T,
+            )
 
     @property
     def precision_cholesky_tensor(self) -> npt.NDArray[npt.Shape['*, *, *'], npt.Float]:
         return self._precision_cholesky_tensor
 
+    @property
+    def precision_tensor(self) -> npt.NDArray[npt.Shape['*, *, *'], npt.Float]:
+        return self._precision_tensor
+
     @precision_cholesky_tensor.setter
     def precision_cholesky_tensor(
+        self,
+        tensor: npt.NDArray[npt.Shape['*, *, *'], npt.Float]
+    ) -> None:
+        # TODO: put in a message...
+        raise AttributeError
+
+
+    @precision_tensor.setter
+    def precision_tensor(
         self,
         tensor: npt.NDArray[npt.Shape['*, *, *'], npt.Float]
     ) -> None:
