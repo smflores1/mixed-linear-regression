@@ -1,8 +1,3 @@
-# TODO: type hinting everywhere
-# TODO: docstrings everywhere
-# TODO: specify dimensions of tensors when type hinting.
-# TODO: change the name 'regressor' to 'feature'.
-# TODO: type hinting
 
 # Standard library:
 import typing
@@ -187,7 +182,6 @@ class LinearModel:
         # Check that the number of features match:
         assert self.linear_parameters.n_features == self.n_features
 
-
 def check_n_samples(
     X_mat: npt.NDArray[typing.Any, npt.Float],
     Y_mat: npt.NDArray[typing.Any, npt.Float],
@@ -202,7 +196,6 @@ def check_n_samples(
             f'The {name_x} and {name_y} matrices should have the same number '
             f'of samples (i.e. rows) but have {len_x} and {len_y} respectively.'
         )
-
 
 def check_shape(*args):
     return base._check_shape(*args)
@@ -338,7 +331,11 @@ def fit_linear_model(
         gaussian_parameters=gaussian_parameters,
     )
 
-def compute_log_gaussian_prob(X_mat, mean_vec, covariance_mat):
+def compute_log_gaussian_prob(
+    X_mat: array_2D,
+    mean_vec: array_1D,
+    covariance_mat: array_2D,
+):
 
     n_features = X_mat.shape[1]
 

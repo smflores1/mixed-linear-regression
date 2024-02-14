@@ -208,8 +208,10 @@ class LinearMixture(base.BaseMixture):
 
         Notes:
         ======
-        -This method is not needed in this implementation but is required by the
-        `sklearn.mixture._base.BaseMixture` abstract base class, so we included it here.
+        -This method is not needed in this implementation because the checks that
+        would be done here are already done during instantiation of `utils.LinearModel`.
+        This method however is required by the `sklearn.mixture._base.BaseMixture`
+        abstract base class, so we included it here.
 
         '''
 
@@ -570,7 +572,7 @@ class LinearMixture(base.BaseMixture):
         self,
         X_mat: utils.array_2D,
         Y_mat: utils.array_2D,
-    ):
+    ) -> utils.array_1D:
 
         '''
 
@@ -599,7 +601,7 @@ class LinearMixture(base.BaseMixture):
         self,
         X_mat: utils.array_2D,
         Y_mat: utils.array_2D,
-    ):
+    ) -> utils.array_2D:
 
         '''
 
@@ -625,7 +627,7 @@ class LinearMixture(base.BaseMixture):
         _, log_resp_mat = self._estimate_log_prob_resp(X_mat, Y_mat)
         return np.exp(log_resp_mat)
 
-    def sample(self, n_samples: int = 1):
+    def sample(self, n_samples: int = 1) -> tuple[utils.array_2D, utils.array_2D]:
 
         '''
 
