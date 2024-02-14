@@ -15,17 +15,58 @@ import scipy.linalg as linalg
 from sklearn.utils import check_array
 import sklearn.mixture._base as base
 import sklearn.mixture._gaussian_mixture as gaussian_mixture
-# from sklearn.mixture._gaussian_mixture import
 
-# TODO: add 'Optional' to type hinting so these can store partial info (for when we only have some parameters from init)
 # TODO: promote assertions to something like ValueError
-# TODO: store the Cholesky factorization of the covariance tensor and make the covariance tensor a property.
-@dc.dataclass
-class GaussianParameters:
-    mean_mat: npt.NDArray[npt.Shape['*, *'], npt.Float]
-    covariance_tensor: npt.NDArray[npt.Shape['*, *, *'], npt.Float]
 
-    def __post_init__(self):
+array_1D = typing.Optional[npt.NDArray[npt.Shape['*'], npt.Float]]
+array_2D = typing.Optional[npt.NDArray[npt.Shape['*, *'], npt.Float]]
+array_3D = typing.Optional[npt.NDArray[npt.Shape['*, *, *'], npt.Float]]
+
+class CovarianceTensor:
+
+    def __init__(
+        self,
+        covariance_tensor: array_3D,
+    ):
+        self._covariance_tensor = covariance_tensor
+
+    @property
+    def covariance_tensor(self) -> npt.NDArray[npt.Shape['*, *, *'], npt.Float]:
+        return self._covariance_tensor
+
+    @covariance_tensor.setter
+    def covariance_tensor(
+        self,
+        tensor: array_3D
+    ) -> None:
+        self._covariance_tensor = tensor
+        if tensor is None:
+            self._precision_cholesky_tensor = None
+        else:
+            self._precision_cholesky_tensor = compute_precision_cholesky(tensor, 'full')
+
+    @property
+    def precision_cholesky_tensor(self) -> npt.NDArray[npt.Shape['*, *, *'], npt.Float]:
+        return self._precision_cholesky_tensor
+
+    @precision_cholesky_tensor.setter
+    def precision_cholesky_tensor(
+        self,
+        tensor: npt.NDArray[npt.Shape['*, *, *'], npt.Float]
+    ) -> None:
+        # TODO: put in a message...
+        raise AttributeError
+
+class GaussianParameters(CovarianceTensor):
+
+    def __init__(
+        self,
+        mean_mat: array_2D = None,
+        covariance_tensor: array_3D = None,
+    ) -> None:
+
+        self.mean_mat = mean_mat
+        super().__init__(covariance_tensor)
 
         self.n_components = None
         self.n_features = None
@@ -51,19 +92,20 @@ class GaussianParameters:
                 self.n_features,
             )
 
+        # TODO: what hapepns if either of self.n_components or self.n_features is still None?
 
-# TODO: add 'Optional' to type hinting so these can store partial info (for when we only have some parameters from init)
-# TODO: promote assertions to something like ValueError
-# TODO: store the Cholesky factorization of the covariance tensor and make the covariance tensor a property.
-@dc.dataclass
-class LinearParameters:
-    bias_mat: npt.NDArray[npt.Shape['*, *'], npt.Float]
-    slope_tensor: npt.NDArray[npt.Shape['*, *, *'], npt.Float]
-    covariance_tensor: npt.NDArray[npt.Shape['*, *, *'], npt.Float]
+class LinearParameters(CovarianceTensor):
 
-    def __post_init__(self):
+    def __init__(
+        self,
+        bias_mat: array_2D = None,
+        slope_tensor: array_3D = None,
+        covariance_tensor: array_3D = None,
+    ) -> None:
 
-        # TODO: make this work if attributes are None
+        self.bias_mat = bias_mat
+        self.slope_tensor = slope_tensor
+        super().__init__(covariance_tensor)
 
         self.n_components = None
         self.n_features = None
@@ -98,19 +140,22 @@ class LinearParameters:
                 self.n_responses,
             )
 
-# TODO: add 'Optional' to type hinting so these can store partial info (for when we only have some parameters from init)
-# TODO: promote assertions to something like ValueError
+        # TODO: what hapepns if either of self.n_components or self.n_features is still None?
+
 @dc.dataclass
 class LinearModel:
-    weight_vec: npt.NDArray[npt.Shape['*'], npt.Float]
-    linear_parameters: LinearParameters
-    gaussian_parameters: GaussianParameters
+    weight_vec: array_1D
+    linear_parameters: typing.Optional[LinearParameters]
+    gaussian_parameters: typing.Optional[GaussianParameters]
 
     def __post_init__(self):
 
         self.n_components = self.gaussian_parameters.n_components
         self.n_features = self.gaussian_parameters.n_features
         self.n_responses = self.linear_parameters.n_responses
+
+        if self.weight_vec is not None:
+            self.weight_vec = check_weights(self.weight_vec, self.n_components)
 
         # Check that the number of components match:
         assert self.linear_parameters.n_components == self.n_components
@@ -179,40 +224,8 @@ def check_slopes(
 def check_precisions(*args):
     return gaussian_mixture._check_precisions(*args)
 
-def check_precisions_cholesky(
-    precisions_cholesky_tensor: npt.NDArray[npt.Shape['*, *, * '], npt.Float],
-    n_components: int,
-    size: int,
-):
-
-    # Check the shape:
-    check_shape(
-        precisions_cholesky_tensor,
-        (n_components, size, size),
-        'Cholesky matrix of precision',
-    )
-
-    # Check that each Cholesky matrix ...:
-    for component_index, cholesky_mat in enumerate(precisions_cholesky_tensor):
-        # ...is lower triangular:
-        if not np.allclose(cholesky_mat, np.triu(cholesky_mat)):
-            raise ValueError(
-                f'In component {component_index}, the Cholesky matrix of the '
-                'precision matrix must be lower triangular, but it is not.'
-            )
-        # ...has only positive entries on the diagonal:
-        if not np.all(np.diag(cholesky_mat) > 0):
-            raise ValueError(
-                f'In component {component_index}, the Cholesky matrix of the '
-                'precision matrix can have only positive diagonal entries, but does not.'
-            )
-
 def compute_precision_cholesky(*args):
     return gaussian_mixture._compute_precision_cholesky(*args)
-
-def compute_precision_cholesky_from_precisions(*args):
-    return gaussian_mixture._compute_precision_cholesky_from_precisions(*args)
-
 
 def estimate_gaussian_parameters(
     X_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
@@ -230,7 +243,6 @@ def estimate_gaussian_parameters(
     mean_mat = np.dot(resp_mat.T, X_mat) / resp_total_vec[:, np.newaxis]
     covariance_tensor = np.empty((n_components, n_features, n_features))
 
-    # TODO: comput_resp_total within the loop by iterating over the rows of resp_total_vec:
     for component_index, (mean_vec, resp_total) in enumerate(zip(mean_mat, resp_total_vec)):
         diff_mat = X_mat - mean_vec
         covariance_tensor[component_index] = (
@@ -241,7 +253,6 @@ def estimate_gaussian_parameters(
         mean_mat=mean_mat,
         covariance_tensor=covariance_tensor,
     )
-
 
 def estimate_linear_parameters(
     X_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
@@ -282,7 +293,6 @@ def estimate_linear_parameters(
         covariance_tensor=covariance_tensor,
     )
 
-# TODO: this also needs to return weights:
 def fit_linear_model(
     X_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
     Y_mat: npt.NDArray[npt.Shape['*, *'], npt.Float],
@@ -303,8 +313,6 @@ def fit_linear_model(
         linear_parameters=linear_parameters,
         gaussian_parameters=gaussian_parameters,
     )
-
-# TODO: import the method _compute_precision_cholesky from gaussian_mixture and define it as a function here...
 
 def compute_log_gaussian_prob(X_mat, mean_vec, covariance_mat):
 
