@@ -25,7 +25,7 @@
     of regressor variables `test_X_mat` and response variables `test_Y_mat` via
 
     ```
-    lm_label_vec = lm.predict(test_X_mat, test_Y_mat)
+        lm_label_vec = lm.predict(test_X_mat, test_Y_mat)
     ```
 
     The model assumes that regressor variables of a given component are
