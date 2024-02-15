@@ -1,3 +1,49 @@
+'''
+
+    Module:
+    =======
+    Name: `linear_mixture.py`
+    Author: Steven Flores
+    Date: 2024-02-14
+
+    Description:
+    ============
+    This module is home to the `LinearMixture` class. An instance of this
+    class fits training data to a linear mixture model, also called a 'mixed
+    linear regression' or 'MLR' in the literature, via expectation maximization.
+    That is, given training data of regressor variables `train_X_mat` and response
+    variables `train_Y_mat`, `K` components (i.e., 'clusters'), each belonging to
+    a distinct linear model, are found in the data by calling
+
+    ```
+        lm = linear_mixture.LinearMixture(
+            n_components=K
+        ).fit(train_X_mat, train_Y_mat)
+    ```
+
+    Based on this fit, component assignment predictions are made on test data
+    of regressor variables `test_X_mat` and response variables `test_Y_mat` via
+
+    ```
+    lm_label_vec = lm.predict(test_X_mat, test_Y_mat)
+    ```
+
+    The model assumes that regressor variables of a given component are
+    drawn from a normal distribution and the response variables are the
+    sum of a linear function of the regression variables with a mean zero
+    normal random variable. The `fit` method estimates the parameters of
+    both normal distributions and the slope and bias of the linear model,
+    separately for each component.
+
+    Note:
+    =====
+    -This class emulates the API of `sklearn.mixture._base.BaseMixture`.
+    -Docstrings and other documentation are not finished. Please refer
+    to documentation in `sklearn.mixture._base.BaseMixture` for docstrings
+    that nearly describe what is done here. Also, the docstrings in the class
+    `sklearn.mixture._gaussian_mixture.GaussianMixture` may be helpful.
+
+'''
 
 # Standard library:
 import typing

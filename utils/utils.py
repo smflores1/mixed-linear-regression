@@ -11,8 +11,6 @@ from sklearn.utils import check_array
 import sklearn.mixture._base as base
 import sklearn.mixture._gaussian_mixture as gaussian_mixture
 
-# TODO: promote assertions to something like ValueError
-
 array_1D = typing.Optional[npt.NDArray[npt.Shape['*'], npt.Float]]
 array_2D = typing.Optional[npt.NDArray[npt.Shape['*, *'], npt.Float]]
 array_3D = typing.Optional[npt.NDArray[npt.Shape['*, *, *'], npt.Float]]
@@ -59,23 +57,6 @@ class CovarianceTensor:
     def precision_tensor(self) -> npt.NDArray[npt.Shape['*, *, *'], npt.Float]:
         return self._precision_tensor
 
-    @precision_cholesky_tensor.setter
-    def precision_cholesky_tensor(
-        self,
-        tensor: npt.NDArray[npt.Shape['*, *, *'], npt.Float]
-    ) -> None:
-        # TODO: put in a message...
-        raise AttributeError
-
-
-    @precision_tensor.setter
-    def precision_tensor(
-        self,
-        tensor: npt.NDArray[npt.Shape['*, *, *'], npt.Float]
-    ) -> None:
-        # TODO: put in a message...
-        raise AttributeError
-
 class GaussianParameters(CovarianceTensor):
 
     def __init__(
@@ -97,8 +78,8 @@ class GaussianParameters(CovarianceTensor):
                 self.mean_mat, self.n_components, self.n_features
             )
 
-        # NOTE: it's misleading to use check_precisions on a covariance matrix,
-        # but it technically works...
+        # NOTE: it is misleading to use `check_precisions` on a covariance matrix,
+        # but it works because precision and covariance matrices share the same properties:
         if self.covariance_tensor is not None:
             if self.n_components is None:
                 self.n_components = self.covariance_tensor.shape[0]
@@ -110,8 +91,6 @@ class GaussianParameters(CovarianceTensor):
                 self.n_components,
                 self.n_features,
             )
-
-        # TODO: what hapepns if either of self.n_components or self.n_features is still None?
 
 class LinearParameters(CovarianceTensor):
 
@@ -145,8 +124,8 @@ class LinearParameters(CovarianceTensor):
                 self.slope_tensor, self.n_components, self.n_features, self.n_responses
             )
 
-        # NOTE: it's misleading to use check_precisions on a covariance matrix,
-        # but it technically works...
+        # NOTE: it is misleading to use `check_precisions` on a covariance matrix,
+        # but it works because precision and covariance matrices share the same properties:
         if self.covariance_tensor is not None:
             if self.n_components is None:
                 self.n_components = self.covariance_tensor.shape[0]
@@ -158,8 +137,6 @@ class LinearParameters(CovarianceTensor):
                 self.n_components,
                 self.n_responses,
             )
-
-        # TODO: what hapepns if either of self.n_components or self.n_features is still None?
 
 @dc.dataclass
 class LinearModel:
@@ -177,10 +154,16 @@ class LinearModel:
             self.weight_vec = check_weights(self.weight_vec, self.n_components)
 
         # Check that the number of components match:
-        assert self.linear_parameters.n_components == self.n_components
+        if self.linear_parameters.n_components != self.n_components:
+            raise ValueError(
+                'Different number of components found in the regressor and response variables.'
+            )
 
         # Check that the number of features match:
-        assert self.linear_parameters.n_features == self.n_features
+        if self.linear_parameters.n_features != self.n_features:
+            raise ValueError(
+                'Different number of features found in the regressor and response variables.'
+            )
 
 def check_n_samples(
     X_mat: npt.NDArray[typing.Any, npt.Float],
@@ -253,7 +236,10 @@ def estimate_gaussian_parameters(
     n_features = X_mat.shape[1]
     n_components = resp_mat.shape[1]
 
-    assert resp_mat.shape[0] == n_samples
+    if resp_mat.shape[0] != n_samples:
+        raise ValueError(
+            'Different number of rows found in the regressor and responsibility matrices.'
+        )
 
     resp_total_vec = resp_mat.sum(axis=0) + 10 * np.finfo(resp_mat.dtype).eps
 
@@ -282,8 +268,15 @@ def estimate_linear_parameters(
     n_responses = Y_mat.shape[1]
     n_components = resp_mat.shape[1]
 
-    assert Y_mat.shape[0] == n_samples
-    assert resp_mat.shape[0] == n_samples
+    if Y_mat.shape[0] != n_samples:
+        raise ValueError(
+            'Different number of rows found in the regressor and response matrices.'
+        )
+
+    if resp_mat.shape[0] != n_samples:
+        raise ValueError(
+            'Different number of rows found in the regressor and responsibility matrices.'
+        )
 
     X_mat = np.concatenate([X_mat, np.ones(n_samples).reshape(-1, 1)], axis=1)
 
@@ -318,8 +311,15 @@ def fit_linear_model(
 
     n_samples = X_mat.shape[0]
 
-    assert Y_mat.shape[0] == n_samples
-    assert resp_mat.shape[0] == n_samples
+    if Y_mat.shape[0] != n_samples:
+        raise ValueError(
+            'Different number of rows found in the regressor and response matrices.'
+        )
+
+    if resp_mat.shape[0] != n_samples:
+        raise ValueError(
+            'Different number of rows found in the regressor and responsibility matrices.'
+        )
 
     weight_vec = np.mean(resp_mat, axis=0)
     linear_parameters = estimate_linear_parameters(X_mat, Y_mat, resp_mat)
