@@ -24,6 +24,7 @@ The following example shows how a traditional Gaussian mixture model can fail to
 ```
 python example.py
 ```
+![Example](example.png)
 
 ### Usage
 For training data of regressors `train_X_mat` and responses `train_Y_mat`, train the model as follows:
