@@ -1,4 +1,4 @@
-'''
+"""
 
     Module:
     =======
@@ -43,7 +43,7 @@
     that nearly describe what is done here. Also, the docstrings in the class
     `sklearn.mixture._gaussian_mixture.GaussianMixture` may be helpful.
 
-'''
+"""
 
 # Standard library:
 import typing
@@ -59,17 +59,18 @@ import sklearn.utils.validation as validation
 # Local modules:
 import utils.utils as utils
 
+
 class LinearMixture(base.BaseMixture):
 
     _parameter_constraints: dict = {
         **base.BaseMixture._parameter_constraints,
-        'covariance_type': ['full'],
-        'weights_init': ['array-like', None],
-        'means_init': ['array-like', None],
-        'regressor_precisions_init': ['array-like', None],
-        'biases_init': ['array-like', None],
-        'slopes_init': ['array-like', None],
-        'response_precisions_init': ['array-like', None],
+        "covariance_type": ["full"],
+        "weights_init": ["array-like", None],
+        "means_init": ["array-like", None],
+        "regressor_precisions_init": ["array-like", None],
+        "biases_init": ["array-like", None],
+        "slopes_init": ["array-like", None],
+        "response_precisions_init": ["array-like", None],
     }
 
     def __init__(
@@ -80,7 +81,7 @@ class LinearMixture(base.BaseMixture):
         reg_covar: float = 1e-6,
         max_iter: int = 100,
         n_init: int = 1,
-        init_params: str = 'kmeans',
+        init_params: str = "kmeans",
         weights_init: utils.array_1D = None,
         means_init: utils.array_2D = None,
         regressor_precisions_init: utils.array_3D = None,
@@ -124,8 +125,7 @@ class LinearMixture(base.BaseMixture):
         self._linear_model_init = utils.LinearModel(
             weight_vec=weights_init,
             gaussian_parameters=utils.GaussianParameters(
-                means_init,
-                regressor_covariances_init
+                means_init, regressor_covariances_init
             ),
             linear_parameters=utils.LinearParameters(
                 biases_init,
@@ -138,7 +138,7 @@ class LinearMixture(base.BaseMixture):
         self._linear_model = utils.LinearModel(
             weight_vec=None,
             gaussian_parameters=utils.GaussianParameters(),
-            linear_parameters=utils.LinearParameters()
+            linear_parameters=utils.LinearParameters(),
         )
 
         # Check that the explicit and implicit number of components match:
@@ -248,9 +248,7 @@ class LinearMixture(base.BaseMixture):
             )
 
     def _check_parameters(self, *args):
-
-
-        '''
+        """
 
         Notes:
         ======
@@ -259,7 +257,7 @@ class LinearMixture(base.BaseMixture):
         This method however is required by the `sklearn.mixture._base.BaseMixture`
         abstract base class, so we included it here.
 
-        '''
+        """
 
         pass
 
@@ -269,8 +267,7 @@ class LinearMixture(base.BaseMixture):
         Y_mat: utils.array_2D,
         random_state: np.random.RandomState,
     ) -> None:
-
-        '''
+        """
 
         Description:
         ============
@@ -289,11 +286,13 @@ class LinearMixture(base.BaseMixture):
         For this reason, we overwrite it with the following method, which actually
         uses `super()._initialize_parameters` to discover clusters in the data.
 
-        '''
+        """
 
         # Discover components (i.e., 'clusters') in the data:
         # Sets private attribute `self._resp_init_mat` via `self._initialize`:
-        super()._initialize_parameters(np.concatenate([X_mat, Y_mat], axis=1), random_state)
+        super()._initialize_parameters(
+            np.concatenate([X_mat, Y_mat], axis=1), random_state
+        )
 
         # Fit each discovered component (i.e., 'cluster') to its own linear model:
         linear_model_init = utils.fit_linear_model(X_mat, Y_mat, self._resp_init_mat)
@@ -311,19 +310,27 @@ class LinearMixture(base.BaseMixture):
             linear_model.weight_vec = np.mean(self._resp_init_mat, axis=0)
 
         if linear_model.gaussian_parameters.mean_mat is None:
-            linear_model.gaussian_parameters.mean_mat = gaussian_parameters_init.mean_mat
+            linear_model.gaussian_parameters.mean_mat = (
+                gaussian_parameters_init.mean_mat
+            )
 
         if linear_model.gaussian_parameters.covariance_tensor is None:
-            linear_model.gaussian_parameters.covariance_tensor = gaussian_parameters_init.covariance_tensor
+            linear_model.gaussian_parameters.covariance_tensor = (
+                gaussian_parameters_init.covariance_tensor
+            )
 
         if linear_model.linear_parameters.bias_mat is None:
             linear_model.linear_parameters.bias_mat = linear_parameters_init.bias_mat
 
         if linear_model.linear_parameters.slope_tensor is None:
-            linear_model.linear_parameters.slope_tensor = linear_parameters_init.slope_tensor
+            linear_model.linear_parameters.slope_tensor = (
+                linear_parameters_init.slope_tensor
+            )
 
         if linear_model.linear_parameters.covariance_tensor is None:
-            linear_model.linear_parameters.covariance_tensor = linear_parameters_init.covariance_tensor
+            linear_model.linear_parameters.covariance_tensor = (
+                linear_parameters_init.covariance_tensor
+            )
 
         self._set_parameters(linear_model)
 
@@ -332,8 +339,7 @@ class LinearMixture(base.BaseMixture):
         X_mat: utils.array_2D,
         resp_mat: utils.array_2D,
     ) -> None:
-
-        '''
+        """
 
         Notes:
         ======
@@ -344,7 +350,7 @@ class LinearMixture(base.BaseMixture):
         initializes the responsibilities to values implied by the clustering results
         from `super()._initialize_parameters`:
 
-        '''
+        """
 
         self._resp_init_mat = resp_mat
 
@@ -353,8 +359,7 @@ class LinearMixture(base.BaseMixture):
         X_mat: utils.array_2D,
         Y_mat: utils.array_2D,
     ) -> tuple[float, utils.array_2D]:
-
-        '''
+        """
 
         Notes:
         ======
@@ -364,9 +369,11 @@ class LinearMixture(base.BaseMixture):
         -This code is identical to that in `base.BaseMixture._e_step`. It needs to be
         rewritten here in order to accept the response variables `Y_mat`.
 
-        '''
+        """
 
-        sum_comp_log_prob_xy_vec, log_resp_mat = self._estimate_log_prob_resp(X_mat, Y_mat)
+        sum_comp_log_prob_xy_vec, log_resp_mat = self._estimate_log_prob_resp(
+            X_mat, Y_mat
+        )
 
         return np.mean(sum_comp_log_prob_xy_vec), log_resp_mat
 
@@ -376,8 +383,7 @@ class LinearMixture(base.BaseMixture):
         Y_mat: utils.array_2D,
         log_resp_mat: utils.array_2D,
     ) -> None:
-
-        '''
+        """
 
         Notes:
         ======
@@ -387,7 +393,7 @@ class LinearMixture(base.BaseMixture):
         -We must have `Y_mat.shape[1] == self.n_responses` (the number of responses).
         -We must have `log_resp_mat.shape[0] == self.n_components` (the number of components).
 
-        '''
+        """
 
         # For each component, fit a new linear model to its data and
         # compute its weight given the new responsibilities from the 'E-step':
@@ -399,8 +405,7 @@ class LinearMixture(base.BaseMixture):
         X_mat: utils.array_2D,
         Y_mat: utils.array_2D,
     ) -> utils.array_2D:
-
-        '''
+        """
 
         Notes:
         ======
@@ -408,7 +413,7 @@ class LinearMixture(base.BaseMixture):
         -We must have `X_mat.shape[1] == self.n_features` (the number of regressors).
         -We must have `Y_mat.shape[1] == self.n_responses` (the number of responses).
 
-        '''
+        """
 
         # Output probability density matrix:
         log_prob_xy_mat = np.empty((X_mat.shape[0], self.n_components))
@@ -425,7 +430,9 @@ class LinearMixture(base.BaseMixture):
 
             # Log-probability of responses given regressors and the component index:
             log_prob_y_vec = utils.compute_log_gaussian_prob(
-                Y_mat - np.dot(X_mat, self.slopes_[component_index]) - self.biases_[component_index],
+                Y_mat
+                - np.dot(X_mat, self.slopes_[component_index])
+                - self.biases_[component_index],
                 np.zeros(Y_mat.shape[1]),
                 self.response_covariances_[component_index],
             )
@@ -450,8 +457,7 @@ class LinearMixture(base.BaseMixture):
         X_mat: utils.array_2D,
         Y_mat: utils.array_2D,
     ) -> tuple[utils.array_1D, utils.array_2D]:
-
-        '''
+        """
 
         Notes:
         ======
@@ -461,7 +467,7 @@ class LinearMixture(base.BaseMixture):
         -This code is identical to that in `base.BaseMixture._estimate_log_prob_resp`.
         It needs to be rewritten here in order to accept the response variables `Y_mat`.
 
-        '''
+        """
 
         # Responsibity matrix (`self.n_samples` x `self.n_components`):
         weighted_log_prob_xy_mat = self._estimate_weighted_log_prob(X_mat, Y_mat)
@@ -469,17 +475,15 @@ class LinearMixture(base.BaseMixture):
         # Sum responsibilities over components:
         sum_comp_log_prob_xy_vec = special.logsumexp(weighted_log_prob_xy_mat, axis=1)
 
-        with np.errstate(under='ignore'):
+        with np.errstate(under="ignore"):
             # Ignore underflow:
-            log_resp_mat = weighted_log_prob_xy_mat - sum_comp_log_prob_xy_vec[:, np.newaxis]
+            log_resp_mat = (
+                weighted_log_prob_xy_mat - sum_comp_log_prob_xy_vec[:, np.newaxis]
+            )
 
         return sum_comp_log_prob_xy_vec, log_resp_mat
 
-    def _compute_lower_bound(
-        self,
-        _,
-        log_prob_norm: float
-    ) -> float:
+    def _compute_lower_bound(self, _, log_prob_norm: float) -> float:
         return log_prob_norm
 
     def _get_parameters(self) -> utils.LinearModel:
@@ -497,8 +501,7 @@ class LinearMixture(base.BaseMixture):
         X_mat: utils.array_2D,
         Y_mat: utils.array_2D,
     ):
-
-        '''
+        """
 
         Notes:
         ======
@@ -508,7 +511,7 @@ class LinearMixture(base.BaseMixture):
         -This code is identical to that in `base.BaseMixture.fit`. It needs to be
         rewritten here in order to accept the response variables `Y_mat`.
 
-        '''
+        """
 
         self.fit_predict(X_mat, Y_mat)
         return self
@@ -518,8 +521,7 @@ class LinearMixture(base.BaseMixture):
         X_mat: utils.array_2D,
         Y_mat: utils.array_2D,
     ) -> utils.array_1D:
-
-        '''
+        """
 
         Notes:
         ======
@@ -529,24 +531,28 @@ class LinearMixture(base.BaseMixture):
         -This code is identical to that in `base.BaseMixture.fit_predict`. It needs
         to be rewritten here in order to accept the response variables `Y_mat`.
 
-        '''
+        """
 
         # Check for consistency in the structure of the data matrices.
         # Setting `reset=True` ensures that we do not check that the number of columns
         # of `X_mat` or `Y_mat` equals the value of the inherited attribute `self.n_features_in_`:
-        X_mat = self._validate_data(X_mat, dtype=[np.float64, np.float32], ensure_min_samples=2, reset=True)
-        Y_mat = self._validate_data(Y_mat, dtype=[np.float64, np.float32], ensure_min_samples=2, reset=True)
-        utils.check_n_samples(X_mat, Y_mat, 'regressors', 'responses')
+        X_mat = self._validate_data(
+            X_mat, dtype=[np.float64, np.float32], ensure_min_samples=2, reset=True
+        )
+        Y_mat = self._validate_data(
+            Y_mat, dtype=[np.float64, np.float32], ensure_min_samples=2, reset=True
+        )
+        utils.check_n_samples(X_mat, Y_mat, "regressors", "responses")
         if X_mat.shape[0] < self.n_components:
             raise ValueError(
-                'Expected n_samples >= n_components '
-                f'but got n_components = {self.n_components}, '
-                f'n_samples = {X_mat.shape[0]}'
+                "Expected n_samples >= n_components "
+                f"but got n_components = {self.n_components}, "
+                f"n_samples = {X_mat.shape[0]}"
             )
 
         # Check that the number of columns matches the number...
-        self.n_features = X_mat.shape[1] # of features.
-        self.n_responses = Y_mat.shape[1] # of responses.
+        self.n_features = X_mat.shape[1]  # of features.
+        self.n_responses = Y_mat.shape[1]  # of responses.
 
         # NOTE: this does nothing. We include it only to match the base class code:
         self._check_parameters()
@@ -597,8 +603,8 @@ class LinearMixture(base.BaseMixture):
         # user is assumed to have used 0-iters initialization to get the initial means:
         if not self.converged_ and self.max_iter > 0:
             warnings.warn(
-                f'Initialization {init + 1} did not converge. Try different init, '
-                'parameters or increase `max_iter`, `tol` or check for degenerate data.',
+                f"Initialization {init + 1} did not converge. Try different init, "
+                "parameters or increase `max_iter`, `tol` or check for degenerate data.",
                 sklexc.ConvergenceWarning,
             )
 
@@ -619,8 +625,7 @@ class LinearMixture(base.BaseMixture):
         X_mat: utils.array_2D,
         Y_mat: utils.array_2D,
     ) -> utils.array_1D:
-
-        '''
+        """
 
         Notes:
         ======
@@ -631,15 +636,19 @@ class LinearMixture(base.BaseMixture):
         -This code is identical to that in `base.BaseMixture.predict`. It needs to
         be rewritten here in order to accept the response variables `Y_mat`.
 
-        '''
+        """
 
         # Check that the model has been fitted:
         validation.check_is_fitted(self)
 
         # Check for consistency in the structure of the data matrices:
-        X_mat = self._validate_data(X_mat, dtype=[np.float64, np.float32], ensure_min_samples=2, reset=True)
-        Y_mat = self._validate_data(Y_mat, dtype=[np.float64, np.float32], ensure_min_samples=2, reset=True)
-        utils.check_n_samples(X_mat, Y_mat, 'regressors', 'responses')
+        X_mat = self._validate_data(
+            X_mat, dtype=[np.float64, np.float32], ensure_min_samples=2, reset=True
+        )
+        Y_mat = self._validate_data(
+            Y_mat, dtype=[np.float64, np.float32], ensure_min_samples=2, reset=True
+        )
+        utils.check_n_samples(X_mat, Y_mat, "regressors", "responses")
 
         return self._estimate_weighted_log_prob(X_mat, Y_mat).argmax(axis=1)
 
@@ -648,8 +657,7 @@ class LinearMixture(base.BaseMixture):
         X_mat: utils.array_2D,
         Y_mat: utils.array_2D,
     ) -> utils.array_2D:
-
-        '''
+        """
 
         Notes:
         ======
@@ -660,35 +668,38 @@ class LinearMixture(base.BaseMixture):
         -This code is identical to that in `base.BaseMixture.predict_proba`. It needs to
         be rewritten here in order to accept the response variables `Y_mat`.
 
-        '''
+        """
 
         # Check that the model has been fitted:
         validation.check_is_fitted(self)
 
         # Check for consistency in the structure of the data matrices:
-        X_mat = self._validate_data(X_mat, dtype=[np.float64, np.float32], ensure_min_samples=2, reset=True)
-        Y_mat = self._validate_data(Y_mat, dtype=[np.float64, np.float32], ensure_min_samples=2, reset=True)
-        utils.check_n_samples(X_mat, Y_mat, 'regressors', 'responses')
+        X_mat = self._validate_data(
+            X_mat, dtype=[np.float64, np.float32], ensure_min_samples=2, reset=True
+        )
+        Y_mat = self._validate_data(
+            Y_mat, dtype=[np.float64, np.float32], ensure_min_samples=2, reset=True
+        )
+        utils.check_n_samples(X_mat, Y_mat, "regressors", "responses")
 
         _, log_resp_mat = self._estimate_log_prob_resp(X_mat, Y_mat)
         return np.exp(log_resp_mat)
 
     def sample(self, n_samples: int = 1) -> tuple[utils.array_2D, utils.array_2D]:
-
-        '''
+        """
 
         Notes:
         ======
         -To be completed in the future.
 
-        '''
+        """
 
         raise NotImplementedError('The method "sample" has not been implemented yet.')
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
-    '''
+    """
 
     This is a smoke test. The test data comprises two distinct linear models
     with both their regressor and response variables strongly separated and
@@ -696,14 +707,16 @@ if __name__ == '__main__':
     the slopes and biases of these two models and their relative weights (this
     being 0.5 for either because these two models have identical sample counts).
 
-    '''
+    """
 
     from test.utils.test_utils import TestData
 
     test_data = TestData()
 
     # Fit the test data to a linear mixture model:
-    linear_mixture = LinearMixture(n_components=2, random_state=np.random.RandomState(1))
+    linear_mixture = LinearMixture(
+        n_components=2, random_state=np.random.RandomState(1)
+    )
     linear_mixture.fit_predict(test_data.X_mat, test_data.Y_mat)
 
     # Check the weights of the discovered components:
@@ -751,4 +764,4 @@ if __name__ == '__main__':
         atol=1e-1,
     )
 
-    print('Smoke test passed!')
+    print("Smoke test passed!")
